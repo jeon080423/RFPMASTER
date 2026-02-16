@@ -46,8 +46,15 @@ def init_db():
             
     # Check header
     current_data = sheet.get_all_values()
+    
     if not current_data:
          sheet.append_row(["email", "password", "name", "approved", "role"])
+    else:
+        # Check if first row contains 'email'
+        first_row = [str(cell).strip().lower() for cell in current_data[0]]
+        if "email" not in first_row:
+             sheet.insert_row(["email", "password", "name", "approved", "role"], index=1)
+
 
 def get_all_users():
     """Fetches all user data as a DataFrame."""
