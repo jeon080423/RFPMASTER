@@ -279,7 +279,12 @@ if start_analysis:
     st.success("텍스트 추출 완료! AI 분석을 시작합니다.")
     
     try:
-        llm = ChatGroq(temperature=0.0, model_name="openai/gpt-oss-20b", api_key=api_key)
+        # Use 'model' parameter instead of 'model_name' to be explicit
+        MODEL_NAME = "llama3-70b-8192"
+        llm = ChatGroq(temperature=0.0, model=MODEL_NAME, api_key=api_key)
+        
+        st.success(f"현재 사용 중인 AI 모델: {MODEL_NAME} (최대 6,000자 분석 지원)")
+        
         tabs = st.tabs(["키워드 인사이트", "직전 문서 비교", "조사설계", "표본설계", "필수 제안 항목", "준비서류", "목차 체크리스트", "상세 전략"])
         
         # Store results in session state for report generation
@@ -321,9 +326,10 @@ if start_analysis:
                     st.session_state.analysis_results["직전 제안요청서 비교"] = res
 
         # 3. Detailed Analysis
-        def get_relevant_context(text, keywords, box_size=1000, max_len=10000):
+        def get_relevant_context(text, keywords, box_size=6000, max_len=25000):
             """
             Extracts relevant text chunks around keywords.
+            box_size maximized to 6000 chars (approx. max safe limit for Llama3-70b/Groq TPM)
             """
             relevant_chunks = []
             text_lower = text.lower()
@@ -335,7 +341,7 @@ if start_analysis:
                     if idx == -1: break
                     
                     # Extract surrounding text
-                    start = max(0, idx - 200)
+                    start = max(0, idx - 1500) # Increased context before
                     end = min(len(text), idx + box_size)
                     chunk = text[start:end]
                     relevant_chunks.append(chunk)
@@ -343,10 +349,11 @@ if start_analysis:
                     start_idx = idx + len(kw)
             
             # Combine and deduplicate roughly (simple set for now or just join)
-            # To preserve order, we just join and then limit
             if not relevant_chunks:
-                return text[:max_len] # Fallback to first part if no keywords found
+                return text[:max_len]
             
+            # Simple deduplication by checking overlaps could be complex, 
+            # so we join and limit length for now.
             combined = "\n...\n".join(relevant_chunks)
             return combined[:max_len]
 
@@ -354,30 +361,35 @@ if start_analysis:
             with target_tab:
                 st.header(tab_name)
                 
-                # Extract relevant context based on keywords for this section
                 relevant_text = get_relevant_context(context_text, keywords)
                 
                 with st.spinner(f"{tab_name} 분석 중..."):
-                    # Strictly factual system prompt
                     sys_prompt = (
                         f"당신은 제안요청서(RFP) 분석가입니다. 다음 지시에 따라 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요. "
                         f"문서에 명시되지 않은 도구, 기술, 방법론, 의견은 절대로 추가하지 마세요. "
                         f"내용이 없으면 '내용 없음'으로 표기하세요. "
+                        f"출력 시 줄바꿈 등은 HTML 태그(<br>)를 사용하지 말고 마크다운을 사용하세요. "
+                        f"**중요: 반드시 자연스러운 '한국어'로만 작성하세요.** "
+                        f"**영어, 중국어, 일본어, 아랍어가 절대 포함되지 않게 하세요.** "
                         f"지시사항: {instructions}"
                     )
                     prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
                     chain = prompt | llm | StrOutputParser()
-                    # Use relevant text instead of just the start
                     response = chain.invoke({"text": relevant_text})
+                    
+                    # Clean up <br> tags
+                    response = response.replace("<br>", " ").replace("<br/>", " ")
+                    
                     st.markdown(response)
                     st.session_state.analysis_results[tab_name] = response
 
-        run_analysis("조사설계", "조사 개요, 필수 과업, 예비조사 여부 등을 텍스트에 있는 내용 그대로 정리", ["조사 개요", "과업", "목적", "범위", "수행"], full_current_text, tabs[2])
-        run_analysis("표본설계", "모집단, 표본 추출 방식, 오차 한계 등 명시된 수치와 방법만 추출", ["표본", "모집단", "오차", "신뢰", "추출"], full_current_text, tabs[3])
-        run_analysis("필수 제안 항목", "제안요청서에 명시된 필수 수행 활동, 성과품 규격만 나열", ["제안", "활동", "착수", "보고", "성과품"], full_current_text, tabs[4])
-        run_analysis("준비서류", "입찰 참가 자격, 제출해야 할 서류 목록을 있는 그대로 추출", ["자격", "제출", "서류", "증명", "신고"], full_current_text, tabs[5])
-        run_analysis("목차 체크리스트", "제안요청서에 제시된 목차나 평가 항목에 따른 목차 구성요소만 추출", ["목차", "평가", "배점", "구성", "순서"], full_current_text, tabs[6])
-        run_analysis("상세 전략", "정량평가 기준, 명시된 필요 인력 요건, 데이터 품질 요구사항 등 팩트 위주 정리 (임의의 전략 제안 금지)", ["정량", "인력", "품질", "보안", "사후"], full_current_text, tabs[7])
+        # Expanded keywords for better context retrieval
+        run_analysis("조사설계", "조사 개요, 필수 과업, 예비조사 여부 등을 텍스트에 있는 내용 그대로 정리", ["조사 개요", "과업 내용", "과업 목적", "과업 범위", "수행 내용", "사업 목적"], full_current_text, tabs[2])
+        run_analysis("표본설계", "모집단, 표본 추출 방식, 오차 한계 등 명시된 수치와 방법만 추출", ["표본", "모집단", "오차", "신뢰 수준", "추출 방법", "할당", "층화"], full_current_text, tabs[3])
+        run_analysis("필수 제안 항목", "제안요청서에 명시된 필수 수행 활동, 성과품 규격만 나열", ["제안 요구사항", "수행 지침", "착수 보고", "중간 보고", "최종 보고", "성과품", "납품"], full_current_text, tabs[4])
+        run_analysis("준비서류", "입찰 참가 자격, 제출해야 할 서류 목록을 있는 그대로 추출", ["참가 자격", "제출 서류", "입찰 보증금", "실적 증명", "사업자 등록"], full_current_text, tabs[5])
+        run_analysis("목차 체크리스트", "제안요청서에 제시된 목차나 평가 항목에 따른 목차 구성요소만 추출", ["제안서 목차", "평가 항목", "배점 한도", "작성 지침", "평가 기준"], full_current_text, tabs[6])
+        run_analysis("상세 전략", "정량평가 기준, 명시된 필요 인력 요건, 데이터 품질 요구사항 등 팩트 위주 정리", ["정량 평가", "수행 인력", "참여 인력", "데이터 품질", "보안 대책", "사후 지원", "유지 보수"], full_current_text, tabs[7])
 
         # Download Button
         st.markdown("---")
