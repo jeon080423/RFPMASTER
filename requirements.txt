@@ -10,3 +10,4 @@ bcrypt
 gspread
 google-auth
 python-docx
+extra-streamlit-components

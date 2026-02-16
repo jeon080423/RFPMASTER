@@ -132,6 +132,25 @@ def login_user(email, password):
             }
     return None
 
+def get_user_by_email(email):
+    """Fetches user data by email for cookie login."""
+    users = get_all_users()
+    if users.empty: return None
+    
+    user_row = users[users['email'] == email]
+    if not user_row.empty:
+        user_data = user_row.iloc[0]
+        # Helper to safely convert to bool
+        is_approved = str(user_data['approved']).lower() in ('true', '1', 'yes')
+        
+        return {
+            "email": user_data['email'],
+            "name": user_data['name'],
+            "approved": is_approved,
+            "role": user_data['role']
+        }
+    return None
+
 def get_pending_users():
     """Returns a DataFrame of unapproved users."""
     users = get_all_users()
