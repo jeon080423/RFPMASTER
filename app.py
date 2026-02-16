@@ -232,6 +232,12 @@ st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("1. 금년도 공고 자료 (필수)")
+    
+    # Start: Spacer to align with right column's checkbox
+    # Checkbox height is approx 40px with margin.
+    st.markdown("<div style='margin-bottom: 28px;'></div>", unsafe_allow_html=True)
+    # End: Spacer
+    
     current_rfp = st.file_uploader("2025년 제안요청서 업로드", type=["pdf"], key="curr_rfp")
     no_task_desc = st.checkbox("과업지시서 없음 (제안요청서 내 포함)", key="chk_no_task")
     current_task = st.file_uploader("2025년 과업지시서 업로드", type=["pdf"], disabled=no_task_desc, key="curr_task")
@@ -286,11 +292,12 @@ if start_analysis:
             chart = create_word_chart(top_keywords)
             if chart: st.pyplot(chart)
             with st.spinner("비정형 데이터 분석 중..."):
-                prompt = ChatPromptTemplate.from_template("다음 키워드를 바탕으로 발주처의 의도를 1~2문장으로 요약: {keywords}")
+                # Changed to strictly summarize keywords context
+                prompt = ChatPromptTemplate.from_template("제공된 키워드들을 바탕으로 이 사업의 핵심 주제를 1~2문장으로 사실에 기반하여 요약하세요: {keywords}")
                 chain = prompt | llm | StrOutputParser()
                 insight = chain.invoke({"keywords": str(top_keywords)})
-                st.info(f"**AI Insight:** {insight}")
-                st.session_state.analysis_results["키워드 인사이트"] = f"Top Keywords: {str(top_keywords)}\n\nAI Insight: {insight}"
+                st.info(f"**핵심 요약:** {insight}")
+                st.session_state.analysis_results["키워드 인사이트"] = f"Top Keywords: {str(top_keywords)}\n\n핵심 요약: {insight}"
 
         # 2. Previous Comparison
         with tabs[1]:
@@ -301,8 +308,9 @@ if start_analysis:
             else:
                 with st.spinner("직전 연도와 비교 분석 중..."):
                     prompt = ChatPromptTemplate.from_template("""
-                        Compare [Previous] and [Current] documents. 
-                        Analyze changes in Budget, Period, Sample Size, Methodology, Evaluation Criteria.
+                        Compare [Previous] and [Current] documents based ONLY on the provided text.
+                        Analyze factual changes in Budget, Period, Sample Size, Methodology, Evaluation Criteria.
+                        Do NOT infer reasons or add external commentary.
                         Output in Markdown table.
                         [Previous] {prev_text} [Current] {curr_text}
                     """)
@@ -316,19 +324,25 @@ if start_analysis:
             with target_tab:
                 st.header(tab_name)
                 with st.spinner(f"{tab_name} 분석 중..."):
-                    sys_prompt = f"당신은 입찰 전략 컨설턴트입니다. 다음 지시에 따라 분석하세요: {instructions}"
+                    # Strictly factual system prompt
+                    sys_prompt = (
+                        f"당신은 제안요청서(RFP) 분석가입니다. 다음 지시에 따라 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요. "
+                        f"문서에 명시되지 않은 도구, 기술, 방법론, 의견은 절대로 추가하지 마세요. "
+                        f"내용이 없으면 '내용 없음'으로 표기하세요. "
+                        f"지시사항: {instructions}"
+                    )
                     prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
                     chain = prompt | llm | StrOutputParser()
                     response = chain.invoke({"text": context_text[:25000]})
                     st.markdown(response)
                     st.session_state.analysis_results[tab_name] = response
 
-        run_analysis("조사설계", "조사 개요, 필수 과업, 예비조사 여부 등", full_current_text, tabs[2])
-        run_analysis("표본설계", "모집단, 표본 추출 방식, 오차, 관리 방안", full_current_text, tabs[3])
-        run_analysis("필수 제안 항목", "필수 수행 활동, 데이터 품질, 성과품 규격", full_current_text, tabs[4])
-        run_analysis("준비서류", "입찰 자격, 제출 서류 리스트", full_current_text, tabs[5])
-        run_analysis("목차 체크리스트", "필수 목차, 공고기관 강조 포인트(CSF)", full_current_text, tabs[6])
-        run_analysis("상세 전략", "정량평가, 핵심 인력, 데이터 품질, 사후관리, 보안", full_current_text, tabs[7])
+        run_analysis("조사설계", "조사 개요, 필수 과업, 예비조사 여부 등을 텍스트에 있는 내용 그대로 정리", full_current_text, tabs[2])
+        run_analysis("표본설계", "모집단, 표본 추출 방식, 오차 한계 등 명시된 수치와 방법만 추출", full_current_text, tabs[3])
+        run_analysis("필수 제안 항목", "제안요청서에 명시된 필수 수행 활동, 성과품 규격만 나열", full_current_text, tabs[4])
+        run_analysis("준비서류", "입찰 참가 자격, 제출해야 할 서류 목록을 있는 그대로 추출", full_current_text, tabs[5])
+        run_analysis("목차 체크리스트", "제안요청서에 제시된 목차나 평가 항목에 따른 목차 구성요소만 추출", full_current_text, tabs[6])
+        run_analysis("상세 전략", "정량평가 기준, 명시된 필요 인력 요건, 데이터 품질 요구사항 등 팩트 위주 정리 (임의의 전략 제안 금지)", full_current_text, tabs[7])
 
         # Download Button
         st.markdown("---")

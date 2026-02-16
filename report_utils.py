@@ -27,6 +27,18 @@ def generate_word_report(results):
     title = doc.add_heading('수주비책 (Win Strategy) 분석 보고서', 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
+    # Set Korean Font Style
+    from docx.oxml.ns import qn
+    
+    style = doc.styles['Normal']
+    style.font.name = 'Malgun Gothic'
+    style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
+    
+    for heading in ['Heading 1', 'Heading 2', 'Heading 3']:
+        style = doc.styles[heading]
+        style.font.name = 'Malgun Gothic'
+        style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
+    
     for section, content in results.items():
         if not content: continue
         
