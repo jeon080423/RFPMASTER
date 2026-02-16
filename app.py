@@ -181,14 +181,23 @@ def create_word_chart(keywords):
         plt.rc('font', family='AppleGothic')
     else: # Linux (Streamlit Cloud)
         # Try to find Nanum font explicitly
-        path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-        if os.path.exists(path):
-            font_name = fm.FontProperties(fname=path).get_name()
+        paths = [
+            '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
+            '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf',
+            '/usr/share/fonts/truetype/nanum/NanumMyeongjo.ttf'
+        ]
+        font_name = None
+        for path in paths:
+            if os.path.exists(path):
+                font_name = fm.FontProperties(fname=path).get_name()
+                break
+        
+        if font_name:
             plt.rc('font', family=font_name)
         else:
-            # Fallback
+            # Fallback to system-wide installed font name if path not found
             plt.rc('font', family='NanumGothic')
-    
+
     plt.rc('axes', unicode_minus=False)
 
     ax.barh(words, counts, color='#3B82F6')
@@ -197,7 +206,53 @@ def create_word_chart(keywords):
     ax.set_title('Top 20 Keywords')
     return fig
 
+
 # UI Layout
+# (Moved into login_page function above, or handled by main loop below)
+
+if not st.session_state.user:
+    login_page()
+    st.stop()
+
+# If logic for logged in but unapproved users
+if not st.session_state.user['approved']:
+    st.markdown('<div class="main-header" style="text-align: center;">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
+    st.warning(f"환영합니다, {st.session_state.user['name']}님!")
+    st.info("현재 계정 승인 대기 중입니다. 관리자 승인 후 이메일 알림이 발송됩니다.")
+    if st.button("로그아웃"):
+        st.session_state.user = None
+        st.rerun()
+    st.stop()
+
+# -----------------------------------------------------------------------------
+# 3. Authenticated Main Application
+# -----------------------------------------------------------------------------
+
+# Sidebar Logic for Authenticated Users
+with st.sidebar:
+    st.write(f"접속자: **{st.session_state.user['name']}**님")
+    if st.button("로그아웃", key="logout_sidebar"):
+        st.session_state.user = None
+        st.rerun()
+    
+    # Admin Logic
+    if st.session_state.user['role'] == 'admin':
+        admin_dashboard()
+        
+    st.markdown("---")
+    st.image("https://cdn-icons-png.flaticon.com/512/2921/2921222.png", width=50) 
+    st.header("설정 (Settings)")
+    
+    # API Key Management (Secrets & Env)
+    api_key = st.secrets["groq"]["api_key"]
+    if not api_key:
+        api_key = os.environ.get("GROQ_API_KEY")
+ 
+    
+    st.markdown("---")
+    st.markdown("**Developed by ㅈㅅㅎ**")
+
+# Main Content
 st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션</div>', unsafe_allow_html=True)
 
@@ -212,9 +267,9 @@ with col1:
     st.markdown("<div style='margin-bottom: 28px;'></div>", unsafe_allow_html=True)
     # End: Spacer
     
-    current_rfp = st.file_uploader("2025년 제안요청서 업로드", type=["pdf"], key="curr_rfp")
+    current_rfp = st.file_uploader("올해 제안요청서 업로드", type=["pdf"], key="curr_rfp")
     no_task_desc = st.checkbox("과업지시서 없음 (제안요청서 내 포함)", key="chk_no_task")
-    current_task = st.file_uploader("2025년 과업지시서 업로드", type=["pdf"], disabled=no_task_desc, key="curr_task")
+    current_task = st.file_uploader("올해 과업지시서 업로드", type=["pdf"], disabled=no_task_desc, key="curr_task")
 
 with col2:
     st.subheader("2. 직전 연도 공고 자료 (선택)")
@@ -232,7 +287,7 @@ if start_analysis:
         st.stop()
         
     if not current_rfp:
-        st.error("2025년 제안요청서는 필수 업로드 항목입니다.")
+        st.error("올해 제안요청서는 필수 업로드 항목입니다.")
         st.stop()
     
     with st.spinner("문서를 분석 중입니다..."):
@@ -254,10 +309,11 @@ if start_analysis:
     
     try:
         # Use 'model' parameter instead of 'model_name' to be explicit
-        MODEL_NAME = "llama3-70b-8192"
+        MODEL_NAME = "llama-3.3-70b-versatile" # Updated to newest supported model
         llm = ChatGroq(temperature=0.0, model=MODEL_NAME, api_key=api_key)
         
-        st.success(f"현재 사용 중인 AI 모델: {MODEL_NAME} (최대 6,000자 분석 지원)")
+        # Hidden as per request
+        # st.success(f"현재 사용 중인 AI 모델: {MODEL_NAME} (최대 6,000자 분석 지원)")
         
         tabs = st.tabs(["키워드 인사이트", "직전 문서 비교", "조사설계", "표본설계", "필수 제안 항목", "준비서류", "목차 체크리스트", "상세 전략"])
         
