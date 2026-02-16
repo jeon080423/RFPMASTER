@@ -2,7 +2,7 @@
 import gspread
 import pandas as pd
 import streamlit as st
-from passlib.hash import bcrypt
+import bcrypt
 from google.oauth2.service_account import Credentials
 
 # Google Sheets Configuration
@@ -74,7 +74,7 @@ def create_user(email, password, name):
     if not existing_users.empty and email in existing_users['email'].values:
         return False
         
-    hashed_pw = bcrypt.hash(password)
+    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
     # Auto-approve admin from secrets
     role = 'user'
@@ -101,7 +101,7 @@ def login_user(email, password):
     if not user_row.empty:
         user_data = user_row.iloc[0]
         stored_pw = user_data['password']
-        if bcrypt.verify(password, stored_pw):
+        if bcrypt.checkpw(password.encode('utf-8'), stored_pw.encode('utf-8')):
             return {
                 "email": user_data['email'], 
                 "name": user_data['name'], 

@@ -5,7 +5,7 @@ langchain-core
 matplotlib
 kiwipiepy
 pandas
-passlib
+pandas
 bcrypt
 gspread
 google-auth
