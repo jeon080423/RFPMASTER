@@ -198,13 +198,24 @@ def create_word_chart(keywords):
     words, counts = zip(*keywords)
     fig, ax = plt.subplots(figsize=(10, 6))
     import platform
+    import matplotlib.font_manager as fm
+    
     system_name = platform.system()
     if system_name == 'Windows':
-        plt.rcParams['font.family'] = 'Malgun Gothic'
+        plt.rc('font', family='Malgun Gothic')
     elif system_name == 'Darwin': # Mac
-        plt.rcParams['font.family'] = 'AppleGothic'
+        plt.rc('font', family='AppleGothic')
     else: # Linux (Streamlit Cloud)
-        plt.rcParams['font.family'] = 'NanumGothic'
+        # Try to find Nanum font explicitly
+        path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+        if os.path.exists(path):
+            font_name = fm.FontProperties(fname=path).get_name()
+            plt.rc('font', family=font_name)
+        else:
+            # Fallback
+            plt.rc('font', family='NanumGothic')
+    
+    plt.rc('axes', unicode_minus=False)
 
     ax.barh(words, counts, color='#3B82F6')
     ax.invert_yaxis()
@@ -227,9 +238,11 @@ with col1:
 
 with col2:
     st.subheader("2. 직전 연도 공고 자료 (선택)")
-    no_prev_data = st.checkbox("직전 자료 없음 (비교 분석 생략)", key="chk_no_prev")
-    prev_rfp = st.file_uploader("직전 연도 제안요청서 업로드", type=["pdf"], disabled=no_prev_data, key="prev_rfp")
-    prev_task = st.file_uploader("직전 연도 과업지시서 업로드", type=["pdf"], disabled=no_prev_data, key="prev_task")
+    no_prev_rfp = st.checkbox("직전 제안요청서 없음", key="chk_no_prev_rfp")
+    prev_rfp = st.file_uploader("직전 연도 제안요청서 업로드", type=["pdf"], disabled=no_prev_rfp, key="prev_rfp")
+    
+    no_prev_task = st.checkbox("직전 과업지시서 없음", key="chk_no_prev_task")
+    prev_task = st.file_uploader("직전 연도 과업지시서 업로드", type=["pdf"], disabled=no_prev_task, key="prev_task")
 
 start_analysis = st.button("제안요청서 분석 시작 🚀", type="primary", use_container_width=True)
 
@@ -250,9 +263,10 @@ if start_analysis:
         full_current_text = curr_rfp_text + "\n" + curr_task_text
         
         prev_text = ""
-        if not no_prev_data and prev_rfp:
-            prev_text += extract_text_from_pdf(prev_rfp)
-            if prev_task: prev_text += "\n" + extract_text_from_pdf(prev_task)
+        if not no_prev_rfp and prev_rfp:
+            prev_text += extract_text_from_pdf(prev_rfp) + "\n"
+        if not no_prev_task and prev_task: 
+            prev_text += extract_text_from_pdf(prev_task)
         
         top_keywords = analyze_keywords(full_current_text)
         
@@ -262,6 +276,11 @@ if start_analysis:
         llm = ChatGroq(temperature=0.0, model_name="openai/gpt-oss-20b", api_key=api_key)
         tabs = st.tabs(["키워드 인사이트", "직전 문서 비교", "조사설계", "표본설계", "필수 제안 항목", "준비서류", "목차 체크리스트", "상세 전략"])
         
+        # Store results in session state for report generation
+        if "analysis_results" not in st.session_state:
+            st.session_state.analysis_results = {}
+
+        # 1. Keyword Insight
         with tabs[0]:
             st.header("키워드 인사이트")
             chart = create_word_chart(top_keywords)
@@ -271,10 +290,14 @@ if start_analysis:
                 chain = prompt | llm | StrOutputParser()
                 insight = chain.invoke({"keywords": str(top_keywords)})
                 st.info(f"**AI Insight:** {insight}")
+                st.session_state.analysis_results["키워드 인사이트"] = f"Top Keywords: {str(top_keywords)}\n\nAI Insight: {insight}"
 
+        # 2. Previous Comparison
         with tabs[1]:
             st.header("직전 제안요청서 비교")
-            if no_prev_data: st.warning("직전 연도 자료가 없어 비교 분석을 생략합니다.")
+            if not prev_text.strip(): 
+                st.warning("직전 연도 자료가 없어 비교 분석을 생략합니다.")
+                st.session_state.analysis_results["직전 제안요청서 비교"] = "비교 데이터 없음"
             else:
                 with st.spinner("직전 연도와 비교 분석 중..."):
                     prompt = ChatPromptTemplate.from_template("""
@@ -286,7 +309,9 @@ if start_analysis:
                     chain = prompt | llm | StrOutputParser()
                     res = chain.invoke({"prev_text": prev_text[:15000], "curr_text": full_current_text[:15000]})
                     st.markdown(res)
+                    st.session_state.analysis_results["직전 제안요청서 비교"] = res
 
+        # 3. Detailed Analysis
         def run_analysis(tab_name, instructions, context_text, target_tab):
             with target_tab:
                 st.header(tab_name)
@@ -296,6 +321,7 @@ if start_analysis:
                     chain = prompt | llm | StrOutputParser()
                     response = chain.invoke({"text": context_text[:25000]})
                     st.markdown(response)
+                    st.session_state.analysis_results[tab_name] = response
 
         run_analysis("조사설계", "조사 개요, 필수 과업, 예비조사 여부 등", full_current_text, tabs[2])
         run_analysis("표본설계", "모집단, 표본 추출 방식, 오차, 관리 방안", full_current_text, tabs[3])
@@ -303,6 +329,20 @@ if start_analysis:
         run_analysis("준비서류", "입찰 자격, 제출 서류 리스트", full_current_text, tabs[5])
         run_analysis("목차 체크리스트", "필수 목차, 공고기관 강조 포인트(CSF)", full_current_text, tabs[6])
         run_analysis("상세 전략", "정량평가, 핵심 인력, 데이터 품질, 사후관리, 보안", full_current_text, tabs[7])
+
+        # Download Button
+        st.markdown("---")
+        import report_utils
+        if st.session_state.analysis_results:
+            docx_file = report_utils.generate_word_report(st.session_state.analysis_results)
+            st.download_button(
+                label="📥 분석 결과 워드 파일 다운로드",
+                data=docx_file,
+                file_name="win_strategy_report.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+                use_container_width=True
+            )
 
     except Exception as e:
         st.error(f"AI 분석 중 오류가 발생했습니다: {e}")

@@ -9,3 +9,4 @@ pandas
 bcrypt
 gspread
 google-auth
+python-docx
