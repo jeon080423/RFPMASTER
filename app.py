@@ -11,7 +11,6 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import datetime
-import extra_streamlit_components as stx
 import auth
 import email_utils
 
@@ -29,27 +28,8 @@ import email_utils
 # -----------------------------------------------------------------------------
 auth.init_db()
 
-# Cookie Manager Init
-@st.cache_resource
-def get_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_manager()
-
 if "user" not in st.session_state:
-    st.session_state.user = None
-
-# Auto-login from cookie
-if st.session_state.user is None:
-    user_email_cookie = cookie_manager.get(cookie="user_email")
-    if user_email_cookie:
-        user = auth.get_user_by_email(user_email_cookie)
-        if user:
-            st.session_state.user = user
-            st.success(f"{user['name']}님, 자동 로그인되었습니다!")
-            # No rerun here to avoid infinite loop if cookie persists but logic fails, 
-            # but usually safely reruns to update UI
-            # st.rerun() 
+    st.session_state.user = None 
 
 def login_page():
     st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
@@ -60,21 +40,10 @@ def login_page():
         st.subheader("로그인")
         email = st.text_input("이메일", key="login_email")
         password = st.text_input("비밀번호", type="password", key="login_pw")
-        remember_me = st.checkbox("로그인 상태 유지")
-        
         if st.button("로그인", type="primary"):
             user = auth.login_user(email, password)
             if user:
                 st.session_state.user = user
-                
-                if remember_me:
-                    expires = datetime.datetime.now() + datetime.timedelta(days=30)
-                    cookie_manager.set("user_email", email, expires_at=expires)
-                else:
-                    # Ensure cookie is cleared if not checked (optional but good UX)
-                    # cookie_manager.delete("user_email") 
-                    pass
-                
                 st.rerun()
             else:
                 st.error("이메일 또는 비밀번호가 잘못되었습니다.")
@@ -137,7 +106,6 @@ if not st.session_state.user['approved']:
     st.warning(f"환영합니다, {st.session_state.user['name']}님!")
     st.info("현재 계정 승인 대기 중입니다. 관리자 승인 후 이메일 알림이 발송됩니다.")
     if st.button("로그아웃"):
-        cookie_manager.delete("user_email")
         st.session_state.user = None
         st.rerun()
     st.stop()
@@ -150,7 +118,6 @@ if not st.session_state.user['approved']:
 with st.sidebar:
     st.write(f"접속자: **{st.session_state.user['name']}**님")
     if st.button("로그아웃", key="logout_sidebar"):
-        cookie_manager.delete("user_email")
         st.session_state.user = None
         st.rerun()
     
