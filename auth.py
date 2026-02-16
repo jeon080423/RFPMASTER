@@ -56,11 +56,26 @@ def get_all_users():
     
     try:
         sheet = client.open(SHEET_NAME).sheet1
-        data = sheet.get_all_records()
-        return pd.DataFrame(data)
+        data = sheet.get_all_values()
+        
+        if not data: # Empty sheet
+            return pd.DataFrame(columns=["email", "password", "name", "approved", "role"])
+            
+        headers = [h.strip().lower() for h in data[0]]
+        rows = data[1:]
+        
+        df = pd.DataFrame(rows, columns=headers)
+        
+        # Ensure required columns exist
+        required_cols = ["email", "password", "name", "approved", "role"]
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = "" # Add missing column
+                
+        return df
     except Exception as e:
         # st.error(f"데이터 조회 실패: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=["email", "password", "name", "approved", "role"])
 
 def create_user(email, password, name):
     """Creates a new user in Google Sheets."""
