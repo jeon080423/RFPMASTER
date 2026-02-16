@@ -1,0 +1,11 @@
+streamlit
+pdfplumber
+langchain-groq
+langchain-core
+matplotlib
+kiwipiepy
+pandas
+passlib
+bcrypt
+gspread
+google-auth
