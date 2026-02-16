@@ -315,7 +315,8 @@ if start_analysis:
                         [Previous] {prev_text} [Current] {curr_text}
                     """)
                     chain = prompt | llm | StrOutputParser()
-                    res = chain.invoke({"prev_text": prev_text[:15000], "curr_text": full_current_text[:15000]})
+                    # Significantly reduced context to avoid RateLimitError (8000 TPM)
+                    res = chain.invoke({"prev_text": prev_text[:3000], "curr_text": full_current_text[:3000]})
                     st.markdown(res)
                     st.session_state.analysis_results["직전 제안요청서 비교"] = res
 
@@ -333,7 +334,8 @@ if start_analysis:
                     )
                     prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
                     chain = prompt | llm | StrOutputParser()
-                    response = chain.invoke({"text": context_text[:25000]})
+                    # Reduced context to stay within safe token limits
+                    response = chain.invoke({"text": context_text[:7000]})
                     st.markdown(response)
                     st.session_state.analysis_results[tab_name] = response
 
