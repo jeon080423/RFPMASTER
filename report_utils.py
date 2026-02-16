@@ -45,11 +45,30 @@ def generate_word_report(results):
         # Section Header
         doc.add_heading(section, level=1)
         
-        # Process Content (Line by line to handle basics)
-        # This is a basic implementation. For complex markdown tables, 
-        # it will write the raw markdown text.
-        for line in content.split('\n'):
+        lines = content.split('\n')
+        table_buffer = []
+        in_table = False
+        
+        for line in lines:
             line = line.strip()
+            
+            # Detect Table Row
+            if line.startswith('|') and line.endswith('|'):
+                if not in_table:
+                    # Potential start of a table
+                    in_table = True
+                    table_buffer = [line]
+                else:
+                    table_buffer.append(line)
+                continue
+            else:
+                # End of a table if we were in one
+                if in_table:
+                    _process_markdown_table(doc, table_buffer)
+                    table_buffer = []
+                    in_table = False
+            
+            # Normal content processing
             if not line:
                 continue
                 
@@ -60,13 +79,49 @@ def generate_word_report(results):
             elif line.startswith('# '):
                 doc.add_heading(clean_markdown(line[2:]), level=1)
             elif line.startswith('- ') or line.startswith('* '):
-                p = doc.add_paragraph(clean_markdown(line[2:]), style='List Bullet')
+                doc.add_paragraph(clean_markdown(line[2:]), style='List Bullet')
             elif line.startswith('1. '):
-                # Simple check for numbered list
-                p = doc.add_paragraph(clean_markdown(line[3:]), style='List Number')
+                doc.add_paragraph(clean_markdown(line[3:]), style='List Number')
             else:
                 doc.add_paragraph(clean_markdown(line))
-                
+        
+        # Flush pending table at end of content
+        if in_table and table_buffer:
+             _process_markdown_table(doc, table_buffer)
+
+def _process_markdown_table(doc, lines):
+    """
+    Parses a markdown table buffer and adds a Word table.
+    """
+    # Filter out divider lines (e.g., |---|---|)
+    data_rows = [line for line in lines if not set(line.replace('|', '').strip()) <= set('-: ')]
+    
+    if not data_rows: return
+
+    # Determine dimensions
+    first_row_cells = [c.strip() for c in data_rows[0].strip('|').split('|')]
+    cols = len(first_row_cells)
+    rows = len(data_rows)
+    
+    if rows == 0 or cols == 0: return
+
+    # Create Table
+    table = doc.add_table(rows=rows, cols=cols)
+    table.style = 'Table Grid'
+    
+    for r, row_text in enumerate(data_rows):
+        cells = [c.strip() for c in row_text.strip('|').split('|')]
+        # Handle mismatch in columns (basic protection)
+        for c, text in enumerate(cells):
+            if c < cols:
+                cell = table.cell(r, c)
+                cell.text = clean_markdown(text)
+                # Bold header row
+                if r == 0:
+                     for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.bold = True
+
     # Save to IO buffer
     buffer = io.BytesIO()
     doc.save(buffer)

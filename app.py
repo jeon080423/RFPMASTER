@@ -321,9 +321,42 @@ if start_analysis:
                     st.session_state.analysis_results["직전 제안요청서 비교"] = res
 
         # 3. Detailed Analysis
-        def run_analysis(tab_name, instructions, context_text, target_tab):
+        def get_relevant_context(text, keywords, box_size=1000, max_len=10000):
+            """
+            Extracts relevant text chunks around keywords.
+            """
+            relevant_chunks = []
+            text_lower = text.lower()
+            
+            for kw in keywords:
+                start_idx = 0
+                while True:
+                    idx = text_lower.find(kw, start_idx)
+                    if idx == -1: break
+                    
+                    # Extract surrounding text
+                    start = max(0, idx - 200)
+                    end = min(len(text), idx + box_size)
+                    chunk = text[start:end]
+                    relevant_chunks.append(chunk)
+                    
+                    start_idx = idx + len(kw)
+            
+            # Combine and deduplicate roughly (simple set for now or just join)
+            # To preserve order, we just join and then limit
+            if not relevant_chunks:
+                return text[:max_len] # Fallback to first part if no keywords found
+            
+            combined = "\n...\n".join(relevant_chunks)
+            return combined[:max_len]
+
+        def run_analysis(tab_name, instructions, keywords, context_text, target_tab):
             with target_tab:
                 st.header(tab_name)
+                
+                # Extract relevant context based on keywords for this section
+                relevant_text = get_relevant_context(context_text, keywords)
+                
                 with st.spinner(f"{tab_name} 분석 중..."):
                     # Strictly factual system prompt
                     sys_prompt = (
@@ -334,17 +367,17 @@ if start_analysis:
                     )
                     prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
                     chain = prompt | llm | StrOutputParser()
-                    # Reduced context to stay within safe token limits
-                    response = chain.invoke({"text": context_text[:7000]})
+                    # Use relevant text instead of just the start
+                    response = chain.invoke({"text": relevant_text})
                     st.markdown(response)
                     st.session_state.analysis_results[tab_name] = response
 
-        run_analysis("조사설계", "조사 개요, 필수 과업, 예비조사 여부 등을 텍스트에 있는 내용 그대로 정리", full_current_text, tabs[2])
-        run_analysis("표본설계", "모집단, 표본 추출 방식, 오차 한계 등 명시된 수치와 방법만 추출", full_current_text, tabs[3])
-        run_analysis("필수 제안 항목", "제안요청서에 명시된 필수 수행 활동, 성과품 규격만 나열", full_current_text, tabs[4])
-        run_analysis("준비서류", "입찰 참가 자격, 제출해야 할 서류 목록을 있는 그대로 추출", full_current_text, tabs[5])
-        run_analysis("목차 체크리스트", "제안요청서에 제시된 목차나 평가 항목에 따른 목차 구성요소만 추출", full_current_text, tabs[6])
-        run_analysis("상세 전략", "정량평가 기준, 명시된 필요 인력 요건, 데이터 품질 요구사항 등 팩트 위주 정리 (임의의 전략 제안 금지)", full_current_text, tabs[7])
+        run_analysis("조사설계", "조사 개요, 필수 과업, 예비조사 여부 등을 텍스트에 있는 내용 그대로 정리", ["조사 개요", "과업", "목적", "범위", "수행"], full_current_text, tabs[2])
+        run_analysis("표본설계", "모집단, 표본 추출 방식, 오차 한계 등 명시된 수치와 방법만 추출", ["표본", "모집단", "오차", "신뢰", "추출"], full_current_text, tabs[3])
+        run_analysis("필수 제안 항목", "제안요청서에 명시된 필수 수행 활동, 성과품 규격만 나열", ["제안", "활동", "착수", "보고", "성과품"], full_current_text, tabs[4])
+        run_analysis("준비서류", "입찰 참가 자격, 제출해야 할 서류 목록을 있는 그대로 추출", ["자격", "제출", "서류", "증명", "신고"], full_current_text, tabs[5])
+        run_analysis("목차 체크리스트", "제안요청서에 제시된 목차나 평가 항목에 따른 목차 구성요소만 추출", ["목차", "평가", "배점", "구성", "순서"], full_current_text, tabs[6])
+        run_analysis("상세 전략", "정량평가 기준, 명시된 필요 인력 요건, 데이터 품질 요구사항 등 팩트 위주 정리 (임의의 전략 제안 금지)", ["정량", "인력", "품질", "보안", "사후"], full_current_text, tabs[7])
 
         # Download Button
         st.markdown("---")
