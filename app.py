@@ -88,6 +88,7 @@ def login_page():
                 st.error("모든 정보를 입력해주세요.")
             else:
                 if auth.create_user(new_email, new_password, new_name):
+                    email_utils.send_admin_notification(new_email, new_name)
                     st.success("가입 요청이 완료되었습니다. 관리자 승인 후 이용 가능합니다.")
                 else:
                     st.error("이미 가입된 이메일입니다.")
@@ -154,23 +155,11 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2921/2921222.png", width=50) 
     st.header("설정 (Settings)")
     
-    # Priority: Session State -> Sidebar Input -> Secrets -> Environment Variable
-    if "api_key" not in st.session_state:
-        st.session_state.api_key = ""
-        
-    # Try to load from secrets if available
-    secret_api_key = ""
-    try:
-        secret_api_key = st.secrets["groq"]["api_key"]
-    except:
-        pass
-        
-    api_key_input = st.text_input("Groq API Key", type="password", value=secret_api_key if secret_api_key else st.session_state.api_key)
-    
-    if api_key_input:
-        st.session_state.api_key = api_key_input # Update session state
-    
-    api_key = st.session_state.api_key or os.environ.get("GROQ_API_KEY") 
+    # API Key Management (Secrets & Env)
+    api_key = st.secrets["groq"]["api_key"]
+    if not api_key:
+        api_key = os.environ.get("GROQ_API_KEY")
+ 
     
     st.markdown("---")
     st.markdown("**Developed by ㅈㅅㅎ**")
