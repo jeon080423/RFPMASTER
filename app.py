@@ -6,6 +6,7 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_groq import ChatGroq
 import datetime
 import time
 import google.generativeai as genai
@@ -228,6 +229,9 @@ with st.sidebar:
     
     # Current primary key for simple usage
     api_key = api_keys[0] if api_keys else ""
+    
+    # Groq API Key
+    groq_api_key = st.secrets.get("groq", {}).get("api_key", os.environ.get("GROQ_API_KEY", ""))
     
     st.markdown("---")
     st.markdown("**Developed by ㅈㅅㅎ**")
@@ -456,9 +460,9 @@ def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
 st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션</div>', unsafe_allow_html=True)
 
-# Rate limit retry helper with Key Rotation
-def invoke_with_retry(prompt_template, params, api_keys, max_retries=3, use_flash=False):
-    """Invoke LLM chain with retry and API key rotation on rate limit errors."""
+# Rate limit retry helper with Key Rotation & Groq Fallback
+def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, max_retries=3, use_flash=False):
+    """Invoke LLM chain with retry, API key rotation, and Groq fallback."""
     if not api_keys:
         raise Exception("API Key가 설정되지 않았습니다.")
     
@@ -482,6 +486,21 @@ def invoke_with_retry(prompt_template, params, api_keys, max_retries=3, use_flas
                 # Removed time.sleep() for instant rotation
             else:
                 raise e
+                
+    # --- Final Fallback to Groq ---
+    if groq_api_key:
+        try:
+            st.info("💡 모든 제미나이 한도가 초과되어 Groq 엔진(Llama-3.1-70b)으로 전환하여 분석을 완료합니다.")
+            llm = ChatGroq(
+                temperature=0.0, 
+                model_name="llama-3.1-70b-versatile", 
+                groq_api_key=groq_api_key
+            )
+            chain = prompt_template | llm | StrOutputParser()
+            return chain.invoke(params)
+        except Exception as groq_err:
+            st.error(f"❌ Groq 엔진 호출 실패: {groq_err}")
+
     raise Exception("모든 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM)에 도달했을 때 발생합니다. 약 1분 후 다시 시도해주세요.")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
@@ -744,7 +763,7 @@ else:
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
             
             with st.spinner(f"[{project_name}] 전문가 모드 정밀 분석 중..."):
-                response = invoke_with_retry(prompt, {"text": user_content}, api_keys)
+                response = invoke_with_retry(prompt, {"text": user_content}, api_keys, groq_api_key=groq_api_key)
                 
                 # Extract AI-detected project name (fallback)
                 ai_name_match = re.search(r'\[PROJECT_NAME:\s*(.*?)\]', response)
@@ -783,7 +802,7 @@ else:
 4. 표 형식으로만 출력하세요 (| 연도 | 논문/보고서명 | 저자명 | 저자 소속기관 | 보고서 발간 기간 |).
 5. 실제 존재하는 연구 데이터만 기반으로 작성하세요.
 """)
-                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, use_flash=False)
+                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, groq_api_key=groq_api_key, use_flash=False)
                     st.session_state.analysis_results["similar_research"] = clean_ai_output(research_result)
                 except Exception as e:
                     st.session_state.analysis_results["similar_research"] = f"유사연구 검색 중 오류 발생: {e}"
