@@ -88,11 +88,19 @@ def generate_word_report(results):
         # Flush pending table at end of content
         if in_table and table_buffer:
              _process_markdown_table(doc, table_buffer)
+    
+    # Final cleanup and save to buffer
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 def _process_markdown_table(doc, lines):
     """
     Parses a markdown table buffer and adds a Word table.
     """
+    from docx.oxml.ns import qn
+    
     # Filter out divider lines (e.g., |---|---|)
     data_rows = [line for line in lines if not set(line.replace('|', '').strip()) <= set('-: ')]
     
@@ -116,14 +124,12 @@ def _process_markdown_table(doc, lines):
             if c < cols:
                 cell = table.cell(r, c)
                 cell.text = clean_markdown(text)
-                # Bold header row
-                if r == 0:
-                     for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
+                
+                # Apply Font to Table Cells
+                for paragraph in cell.paragraphs:
+                    paragraph.style = doc.styles['Normal']
+                    for run in paragraph.runs:
+                        run.font.name = 'Malgun Gothic'
+                        run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
+                        if r == 0: # Header Bold
                             run.font.bold = True
-
-    # Save to IO buffer
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
