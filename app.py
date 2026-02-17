@@ -685,7 +685,7 @@ else:
         with tabs[0]:
             st.header("📋 제안요청서 분석 결과")
             analysis_text = st.session_state.analysis_results.get("main_analysis", "")
-            st.markdown(analysis_text)
+            st.markdown(analysis_text, unsafe_allow_html=True)
             
             st.markdown("---")
             st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 상단 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
@@ -708,7 +708,8 @@ else:
                             prompt_k, {"keywords": str(keywords)}, api_keys, use_flash=True
                         )
                     
-                    st.markdown(st.session_state.analysis_results["keyword_summary"])
+                    st.session_state.analysis_results["keyword_summary"] = clean_ai_output(st.session_state.analysis_results["keyword_summary"])
+                    st.markdown(st.session_state.analysis_results["keyword_summary"], unsafe_allow_html=True)
                     
                     # Update Docx with keyword summary if not already included
                     if "docx_file" in st.session_state.analysis_results:
