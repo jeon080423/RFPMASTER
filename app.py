@@ -211,7 +211,7 @@ with st.sidebar:
             <span style='font-size: 0.9rem;'>카카오뱅크 3333-23-866708 ㅈㅅㅎ</span>
         </div>
         <div style='font-size: 0.8rem; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 8px; font-weight: 500;'>
-            지속 가능한 서비스를 위해 여러분의 응원이 필요합니다. 모인 후원금은 서버 전용 비용 및 API 업그레이드를 위한 자금으로 사용됩니다.
+            지속 가능한 서비스를 위해 여러분의 응원이 필요합니다. 모인 후원금은 서버 비용 및 API 업그레이드를 위한 자금으로 사용됩니다.
         </div>
     </div>
     """, unsafe_allow_html=True)
