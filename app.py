@@ -206,9 +206,9 @@ with st.sidebar:
         <div style='margin-bottom: 8px;'>
             <b>이메일</b><br>jeon080423@gmail.com
         </div>
-        <div style='margin-bottom: 12px;'>
+        <div style='margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>
             <b>후원계좌</b><br>
-            카카오뱅크 3333-23-866708 ㅈㅅㅎ
+            <span style='font-size: 0.9rem;'>카카오뱅크 3333-23-866708 ㅈㅅㅎ</span>
         </div>
         <div style='font-size: 0.8rem; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 8px; font-weight: 500;'>
             본 서비스는 유료 API와 서버 전용 비용으로 운영됩니다. 지속적인 발전을 위해 격려 부탁드립니다.
