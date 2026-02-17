@@ -207,26 +207,107 @@ def mask_pii(text):
     masked_text = re.sub(rrn_pattern, '******-*******', text)
     return masked_text
 
+def remove_repeating_lines(pages_text_list):
+    """Detects and removes frequent headers/footers appearing at top/bottom of pages."""
+    if len(pages_text_list) < 3: return pages_text_list # Too few pages to identify patterns
+    
+    header_counts = {}
+    footer_counts = {}
+    
+    for page in pages_text_list:
+        lines = [l.strip() for l in page.split('\n') if l.strip()]
+        if not lines: continue
+        
+        h = lines[0]
+        f = lines[-1]
+        
+        header_counts[h] = header_counts.get(h, 0) + 1
+        footer_counts[f] = footer_counts.get(f, 0) + 1
+    
+    # Threshold: line appears in more than 50% of pages
+    threshold = len(pages_text_list) * 0.5
+    headers_to_remove = {k for k, v in header_counts.items() if v > threshold}
+    footers_to_remove = {k for k, v in footer_counts.items() if v > threshold}
+    
+    cleaned_pages = []
+    for page in pages_text_list:
+        lines = page.split('\n')
+        if not lines:
+            cleaned_pages.append("")
+            continue
+            
+        new_lines = []
+        for i, line in enumerate(lines):
+            ls = line.strip()
+            # Remove if it's the first/last non-empty line and in removal set
+            if i == 0 and ls in headers_to_remove: continue
+            if i == len(lines)-1 and ls in footers_to_remove: continue
+            new_lines.append(line)
+        cleaned_pages.append('\n'.join(new_lines))
+        
+    return cleaned_pages
+
 def extract_text_from_pdf(uploaded_file):
+    if not uploaded_file: return ""
+    
+    # --- Extraction Caching ---
+    file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+    if "extraction_cache" not in st.session_state:
+        st.session_state.extraction_cache = {}
+        
+    if file_id in st.session_state.extraction_cache:
+        return st.session_state.extraction_cache[file_id]
+    
     text = ""
+    boilerplate_keywords = ["청렴계약", "서식 제", "별지 제", "조세포탈", "청렴 서약", "행정 처분", "입찰 참가 신청서"]
+    preserve_keywords = ["제출 서류", "서류 목록", "평가항목", "배점표"]
+    
+    filtered_pages = 0
+    pages_text_list = []
+    
     try:
         with pdfplumber.open(uploaded_file) as pdf:
+            total_pages = len(pdf.pages)
             for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
-                    text += page_text + "\n"
+                    # Logic: If boilerplate keyword exists, check if any preserve keyword exists
+                    # If it's pure boilerplate (forms/stamps), skip it to save tokens
+                    has_bp = any(kw in page_text for kw in boilerplate_keywords)
+                    has_pr = any(kw in page_text for kw in preserve_keywords)
+                    
+                    if has_bp and not has_pr:
+                        filtered_pages += 1
+                        continue # Skip this page
+                    
+                    # Prepend explicit Page Marker for accurate citations despite H/F removal
+                    page_with_marker = f"[Page {page.page_number}]\n{page_text}"
+                    pages_text_list.append(page_with_marker)
+        
+        # --- Advanced Optimization: Header/Footer Removal ---
+        cleaned_pages = remove_repeating_lines(pages_text_list)
+        text = "\n".join(cleaned_pages)
         
         # --- Token Saving Cleanup ---
         # Remove redundant newlines (3 or more -> 2)
         text = re.sub(r'\n{3,}', '\n\n', text)
         # Remove redundant spaces (2 or more -> 1)
         text = re.sub(r' +', ' ', text)
+        # Structural Optimization: Collapse | | spaces in potential tables
+        text = re.sub(r'\|\s+\|', '||', text)
         # Remove leading/trailing whitespace per line
         text = '\n'.join([line.strip() for line in text.split('\n')])
         
+        if filtered_pages > 0:
+            st.info(f"💡 행정 서식 및 단순 양식 페이지 {filtered_pages}개를 분석에서 제외하여 토큰을 절약했습니다. (전체 {total_pages}p)")
+        
+        # Mask PII and Cache
+        final_text = mask_pii(text)
+        st.session_state.extraction_cache[file_id] = final_text
+        return final_text
+        
     except Exception as e:
         return f"Error reading PDF: {e}"
-    return mask_pii(text)
 
 def analyze_keywords(text):
     kiwi = Kiwi()
@@ -495,13 +576,14 @@ else:
 # [CRITICAL RULE] NO HALLUCINATIONS & TABLE STABILITY
 1. **절대로** 문서에 없는 정보를 지어내지 마세요.
 2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
-3. **[표(Table) 작성 규칙]**: 모든 표(Section 1, 4, 5) 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 쉼표(`,`) 또는 세미콜론(`;`)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요. 표 작성 시 반드시 헤더 구분을 위한 구분선(`| :--- | :--- |`)을 생략하지 마세요.
+3. **[표(Table) 작성 규칙]**: 모든 표(Section 1, 2, 3, 4, 5) 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 반드시 세미콜론(`; `)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요. 표 작성 시 반드시 헤더 구분을 위한 구분선(`| :--- | :--- |`)을 생략하지 마세요.
 
 # [FORMATTING RULE] CONCISE TONE & LINE BREAKS
 - 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
 - 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
 
 # [CITATION RULE]
+- **페이지 인식**: 텍스트 내의 `[Page N]` 표시가 해당 페이지의 시작을 의미합니다. 이를 기반으로 정확한 페이지 번호를 추출하세요.
 - **섹션 1 (표)**: 표 내부에는 **출처(페이지, 제목 등)를 절대 표기하지 마세요.**
 - **섹션 2, 3, 4, 5**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p)).
 
@@ -510,10 +592,20 @@ else:
 {section_1_prompt}
 
 ## 2. 배점표 기반 승부처 분석 (Scoring Strategy)
-**배점이 높거나 중요한 요건 3가지를 명사형으로 기술하고 출처 페이지를 표기하세요.**
+**배점이 높거나 중요한 요건 3가지를 추출하여 아래 표 형식으로 정리하세요.**
+
+| 주요 요건 | 배점 | 상세 내용 및 전략 | 출처 |
+| :--- | :--- | :--- | :--- |
+| | | | |
+| | | | |
+| | | | |
 
 ## 3. 과업 내용 기반 필수 수행 체크리스트 (Must-Do List)
-**과업지시서상 필수 수행 과업을 추출하세요. [중요] 반드시 제안요청서의 '목차' 순서에 맞추어 재배치하여 제시하세요.**
+**과업지시서상 필수 수행 과업을 추출하여 아래 표 형식으로 정리하세요. [중요] 반드시 제안요청서의 '목차' 순서에 맞추어 재배치하고, 상세 수행 내용은 세미콜론(; )으로 연결하여 시인성을 높이세요.**
+
+| 순서 | 필수 과업 내용 | 상세 수행 내용 (줄바꿈 대신 ; 사용) | 출처 |
+| :--- | :--- | :--- | :--- |
+| | | | |
 
 ## 4. 행정 서류 및 제안서 규격 체크리스트 (Administrative Check)
 **제출 서류 및 규격을 정리하고 출처 페이지를 표기하세요.**
@@ -526,6 +618,13 @@ else:
 | **가점 항목** | | |
 | **차별화 요소** | | |
 | **핵심 제언** | | |
+
+## 6. 제안서 목차 및 구성안 (Proposal Skeleton)
+**분석된 과업과 배점을 바탕으로 승률을 높이는 최적의 제안서 구성(Skeleton)을 제안하세요.**
+
+| 대목차 | 중/소목차 | 핵심 포함 내용 및 전략 | 비중(%) |
+| :--- | :--- | :--- | :--- |
+| | | | |
 """
             # Use a balanced slice of the text (Optimized for tokens)
             def get_balanced_context(text, max_chars=20000):
