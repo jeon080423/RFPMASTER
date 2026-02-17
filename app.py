@@ -6,7 +6,6 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.output_parsers import StrOutputParser
 import datetime
 import time
 import google.generativeai as genai
@@ -236,7 +235,7 @@ with st.sidebar:
         api_keys.append(os.environ.get("GOOGLE_API_KEY"))
     
     # Current primary key for simple usage
-    api_keys = [v for k, v in st.secrets.items() if k.startswith("gemini_key_")]
+    api_key = api_keys[0] if api_keys else ""
     
     st.markdown("---")
     st.markdown("**Developed by ㅈㅅㅎ**")
@@ -642,6 +641,15 @@ else:
 
         # 1. Resolve Model
         admin_model = st.session_state.get("admin_selected_model")
+        
+        # Security: ensure model is still in allowed options
+        valid_options = [
+            "자동 최적화 (권장)", "gemini-2.0-pro-exp-02-05", "gemini-2.0-flash", 
+            "gemini-1.5-pro", "gemini-1.5-flash"
+        ]
+        if admin_model and admin_model not in valid_options:
+            admin_model = "자동 최적화 (권장)"
+            
         is_manual = admin_model and admin_model != "자동 최적화 (권장)"
         
         if is_manual:
