@@ -665,7 +665,8 @@ else:
                 try:
                     search_prompt = ChatPromptTemplate.from_template("""
 당신은 학술연구 전문 사서이자 정부 보고서 분석 전문가입니다. 
-다음 [과업명]과 유사한 국내외 학술 연구, 논문, 그리고 정부/공공기관의 조사 보고서를 7~10개 정도 찾아내어 표로 정리하세요.
+다음 [과업명]과 유사한 **국내** 학술 연구, 논문, 그리고 정부/공공기관의 조사 보고서를 7~10개 정도 찾아내어 표로 정리하세요.
+**[중요] 반드시 국내 자료만 리스트업하고, 해외 연구는 제외하세요.**
 **[중요] 반드시 최근 2년 이내(2024년 1월 ~ 2026년 현재)에 발표/발간된 자료여야 합니다.**
 
 [과업명]
@@ -675,6 +676,7 @@ else:
 1. **학술 연구(논문)**를 최우선적으로 리스트업하세요.
 2. 각 항목에 대해 아래 정보를 반드시 포함하세요:
    - 연도: 연도 4자리
+   - 논문/보고서명: 연구의 정식 제목
    - 저자명: 대표 저자명
    - 저자 소속기관: 대학교 또는 연구기관명
    - 보고서 발간 기간: (예: 2023.01 ~ 2023.12 또는 단일 시점)
@@ -682,7 +684,7 @@ else:
    - 1순위: 학술연구(논문) 여부 (논문을 상단에)
    - 2순위: 저자명 가나다/ABC 순
    - 3순위: 소속기관 가나다/ABC 순
-4. 표 형식으로만 출력하세요 (| 연도 | 저자명 | 저자 소속기관 | 보고서 발간 기간 |).
+4. 표 형식으로만 출력하세요 (| 연도 | 논문/보고서명 | 저자명 | 저자 소속기관 | 보고서 발간 기간 |).
 5. 실제 존재하는 연구 데이터만 기반으로 작성하세요.
 """)
                     research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, use_flash=False)
@@ -712,19 +714,20 @@ else:
 
     # --- Persistent Display Area ---
     if "analysis_results" in st.session_state and st.session_state.analysis_results:
-        tabs = st.tabs(["📋 제안요청서 분석 결과", "� 유사연구"])
-        
+        tabs = st.tabs(["📋 제안요청서 분석 결과", "🔍 유사연구"])
+
         with tabs[0]:
             project_name = st.session_state.analysis_results.get("project_name", "미지정 사업")
             st.header(f"📋 제안요청서 분석 결과 [{project_name}]")
             analysis_text = st.session_state.analysis_results.get("main_analysis", "")
             st.markdown(analysis_text, unsafe_allow_html=True)
-            
+
             st.markdown("---")
             st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 하단 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
 
         with tabs[1]:
-            st.header("� 유사연구")
+            st.header("🔍 유사연구")
+            st.info("💡 본 리스트는 제안서 작성을 위한 자문위원 섭외를 돕기 위해 관련 연구자와 유관기관 전문가를 통합 검색한 결과입니다.")
             research_text = st.session_state.analysis_results.get("similar_research", "")
             if research_text:
                 st.markdown(research_text, unsafe_allow_html=True)
