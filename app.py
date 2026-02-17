@@ -190,10 +190,29 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Developed by ㅈㅅㅎ**")
     st.markdown("""
-    <div style='font-size: 0.8rem; color: #666; background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px;'>
-        <b>jeon080423@gmail.com</b><br>
-        <b>후원:</b> 카뱅 3333-23-866708 ㅈㅅㅎ<br>
-        유료 API 결제 및 서버 유지비에 사용됩니다.
+    <div style='
+        font-size: 0.95rem; 
+        color: white; 
+        background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); 
+        padding: 20px; 
+        border-radius: 12px; 
+        margin-top: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        line-height: 1.6;
+    '>
+        <div style='font-weight: 800; font-size: 1.1rem; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px;'>
+            Developer Contact
+        </div>
+        <div style='margin-bottom: 8px;'>
+            <b>이메일</b><br>jeon080423@gmail.com
+        </div>
+        <div style='margin-bottom: 12px;'>
+            <b>후원계좌</b><br>
+            카카오뱅크 3333-23-866708 ㅈㅅㅎ
+        </div>
+        <div style='font-size: 0.8rem; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 8px; font-weight: 500;'>
+            본 서비스는 유료 API와 서버 전용 비용으로 운영됩니다. 지속적인 발전을 위해 격려 부탁드립니다.
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
