@@ -346,45 +346,18 @@ if start_analysis:
                         st.error(f"{tab_name} 분석 중 오류가 발생했습니다: {e}")
 
         # =====================================================================
-        # Common: run_comparison_analysis (with prev doc comparison)
+        # Common: run_comparison_analysis (Condition: Prev exists -> Only Compare, Else -> Single Analysis)
         # =====================================================================
         def run_comparison_analysis(tab_name, instructions_current, instructions_compare, keywords, current_text, previous_text, target_tab):
-            """Analyze current doc, then compare with previous if available."""
+            """If prev doc exists, ONLY show comparison. Else, show current analysis."""
             with target_tab:
                 st.header(tab_name)
                 relevant_current = get_relevant_context(current_text, keywords)
 
-                # Step 1: Analyze current document
-                with st.spinner(f"{tab_name} - 금년도 분석 중..."):
-                    try:
-                        time.sleep(10)
-                        sys_prompt = (
-                            "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
-                            "다음 규칙을 반드시 준수하세요:\n"
-                            "1. 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요.\n"
-                            "2. 문서에 명시되지 않은 도구, 기술, 방법론, 의견은 절대로 추가하지 마세요.\n"
-                            "3. 내용이 없으면 '해당 내용 없음'으로 표기하세요.\n"
-                            "4. 반드시 마크다운 표(table) 형식만 사용하세요. 표 외에 불릿 목록이나 텍스트 설명은 추가하지 마세요.\n"
-                            "5. HTML 태그를 사용하지 말고 마크다운만 사용하세요.\n"
-                            "6. 반드시 자연스러운 '한국어'로만 작성하세요.\n"
-                            "7. 발주기관마다 용어가 다를 수 있으므로, 유사한 의미의 용어는 같은 항목으로 분류하세요.\n\n"
-                            f"[분석 지시사항]\n{instructions_current}"
-                        )
-                        prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
-                        chain = prompt | llm | StrOutputParser()
-                        response = invoke_with_retry(chain, {"text": relevant_current})
-                        response = response.replace("<br>", " ").replace("<br/>", " ")
-                        st.subheader("📌 금년도 분석 결과")
-                        st.markdown(response)
-                        st.session_state.analysis_results[tab_name] = response
-                    except Exception as e:
-                        st.error(f"{tab_name} 금년도 분석 중 오류: {e}")
-                        return
-
-                # Step 2: Compare with previous document (only if available)
+                # CASE 1: Previous document exists -> Comparison Analysis ONLY
                 if previous_text.strip():
                     relevant_prev = get_relevant_context(previous_text, keywords)
-                    with st.spinner(f"{tab_name} - 직전 연도 비교 분석 중..."):
+                    with st.spinner(f"{tab_name} - 직전 연도 대비 비교 분석 중..."):
                         try:
                             time.sleep(15)
                             compare_prompt = ChatPromptTemplate.from_template(
@@ -408,6 +381,98 @@ if start_analysis:
                             st.session_state.analysis_results[f"{tab_name} (비교)"] = compare_res
                         except Exception as e:
                             st.error(f"{tab_name} 비교 분석 중 오류: {e}")
+
+                # CASE 2: No previous document -> Single Year Analysis
+                else:
+                    with st.spinner(f"{tab_name} - 금년도 분석 중..."):
+                        try:
+                            time.sleep(10)
+                            sys_prompt = (
+                                "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
+                                "다음 규칙을 반드시 준수하세요:\n"
+                                "1. 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요.\n"
+                                "2. 문서에 명시되지 않은 도구, 기술, 방법론, 의견은 절대로 추가하지 마세요.\n"
+                                "3. 내용이 없으면 '해당 내용 없음'으로 표기하세요.\n"
+                                "4. 반드시 마크다운 표(table) 형식만 사용하세요. 표 외에 불릿 목록이나 텍스트 설명은 추가하지 마세요.\n"
+                                "5. HTML 태그를 사용하지 말고 마크다운만 사용하세요.\n"
+                                "6. 반드시 자연스러운 '한국어'로만 작성하세요.\n"
+                                "7. 발주기관마다 용어가 다를 수 있으므로, 유사한 의미의 용어는 같은 항목으로 분류하세요.\n\n"
+                                f"[분석 지시사항]\n{instructions_current}"
+                            )
+                            prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
+                            chain = prompt | llm | StrOutputParser()
+                            response = invoke_with_retry(chain, {"text": relevant_current})
+                            response = response.replace("<br>", " ").replace("<br/>", " ")
+                            st.subheader("📌 금년도 분석 결과")
+                            st.markdown(response)
+                            st.session_state.analysis_results[tab_name] = response
+                        except Exception as e:
+                            st.error(f"{tab_name} 금년도 분석 중 오류: {e}")
+                            return
+
+        # =====================================================================
+        # Common: run_task_comparison_analysis (Specific for Tab 4 - Task Description)
+        # =====================================================================
+        def run_task_comparison_analysis(tab_name, instructions_current, keywords, current_text, previous_text, target_tab):
+            """Specific comparison for Task Description (Scope, Content, Cautions)."""
+            with target_tab:
+                st.header(tab_name)
+                relevant_current = get_relevant_context(current_text, keywords)
+                
+                # Check if previous task description exists
+                has_prev_task = bool(previous_text.strip())
+
+                if has_prev_task:
+                    relevant_prev = get_relevant_context(previous_text, keywords)
+                    with st.spinner(f"{tab_name} - 과업지시서 비교 분석 중..."):
+                        try:
+                            time.sleep(15)
+                            compare_prompt = ChatPromptTemplate.from_template(
+                                "당신은 공공기관 입찰 및 과업지시서 전문 분석가입니다.\n"
+                                "아래 [직전 과업지시서]와 [금년도 과업지시서]를 비교하여,\n"
+                                "**조사 범위, 과업 내용, 주의사항(특이사항)** 측면에서 변경된 내용을 분석하세요.\n\n"
+                                "**핵심 규칙:**\n"
+                                "- 반드시 마크다운 표 형식만 사용하세요.\n"
+                                "- '비고' 열에는 변경사항이 제안서 작성 시 유의해야 할 점을 기술하세요.\n"
+                                "- 반드시 한국어로만 작성하세요.\n\n"
+                                "**[비교 항목]**\n"
+                                "| 구분 | 직전 과업지시서 | 금년도 과업지시서 | 비고(제안 전략) |\n"
+                                "|---|---|---|---|\n"
+                                "| 조사/과업 범위 | | | |\n"
+                                "| 주요 과업 내용 | | | |\n"
+                                "| 수행 시 주의사항 | | | |\n"
+                                "| 기타 변경사항 | | | |\n\n"
+                                "[직전 과업지시서]\n{prev_text}\n\n[금년도 과업지시서]\n{curr_text}"
+                            )
+                            chain = compare_prompt | llm | StrOutputParser()
+                            compare_res = invoke_with_retry(chain, {"prev_text": relevant_prev, "curr_text": relevant_current})
+                            compare_res = compare_res.replace("<br>", " ").replace("<br/>", " ")
+                            st.subheader("🔄 과업지시서 변경 사항 비교")
+                            st.markdown(compare_res)
+                            st.session_state.analysis_results[f"{tab_name} (과업 비교)"] = compare_res
+                        except Exception as e:
+                            st.error(f"{tab_name} 과업 비교 분석 중 오류: {e}")
+                else:
+                    # Fallback to single analysis if no prev task decription
+                    with st.spinner(f"{tab_name} - 금년도 과업 분석 중..."):
+                        try:
+                            time.sleep(10)
+                            sys_prompt = (
+                                "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
+                                "다음 규칙을 반드시 준수하세요:\n"
+                                "1. 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요.\n"
+                                "2. 반드시 마크다운 표(table) 형식만 사용하세요.\n"
+                                f"[분석 지시사항]\n{instructions_current}"
+                            )
+                            prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
+                            chain = prompt | llm | StrOutputParser()
+                            response = invoke_with_retry(chain, {"text": relevant_current})
+                            response = response.replace("<br>", " ").replace("<br/>", " ")
+                            st.subheader("📌 금년도 분석 결과")
+                            st.markdown(response)
+                            st.session_state.analysis_results[tab_name] = response
+                        except Exception as e:
+                            st.error(f"{tab_name} 분석 중 오류: {e}")
 
         # =====================================================================
         # Tab 1: Keyword Insight
@@ -530,9 +595,9 @@ if start_analysis:
         )
 
         # =====================================================================
-        # Tab 4: 필수 제안 항목
+        # Tab 4: 필수 제안 항목 (Task Description Comparison)
         # =====================================================================
-        run_analysis(
+        run_task_comparison_analysis(
             "📋 필수 제안 항목",
             "제안요청서에 명시된 필수 수행 활동과 성과품을 면밀히 검토하여 아래 표들로 정리하세요.\n"
             "과업 내용의 세부 요구사항, 발주처가 반드시 포함하라고 명시한 항목을 빠짐없이 추출하세요.\n\n"
@@ -548,8 +613,8 @@ if start_analysis:
             "| 중간보고 | | | |\n"
             "| 최종보고 | | | |\n\n"
             "문서에 명시된 내용만 기재하세요.",
-            ["제안 요구사항", "수행 지침", "착수 보고", "중간 보고", "최종 보고", "성과품", "납품", "성과물", "제출물", "보고서", "과업 내용", "수행 과업", "필수 항목"],
-            full_current_text, tabs[3]
+            ["과업 지시", "과업 내용", "수행 사항", "주의 사항", "유의 사항", "특이 사항", "과업 범위", "제안 요구", "세부 과업"],
+            full_current_text, prev_text, tabs[3]
         )
 
         # =====================================================================
