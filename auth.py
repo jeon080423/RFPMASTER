@@ -25,43 +25,57 @@ def get_connection():
         st.error(f"Google Sheets 연결 실패: {e}. secrets.toml을 확인해주세요.")
         return None
 
+@st.cache_resource
 def init_db():
     """Initializes the Google Sheet (creates it if not exists, adds header)."""
-    client = get_connection()
-    if not client: return
-
     try:
-        # Try to open existing sheet
-        sheet = client.open(SHEET_NAME).sheet1
-    except gspread.SpreadsheetNotFound:
+        client = get_connection()
+        if not client: return
+
         try:
-            # Create new sheet if possible (requires Drive scope and permission)
-            sh = client.create(SHEET_NAME)
-            sh.share(st.secrets["gcp_service_account"]["client_email"], perm_type='user', role='owner')
-            sheet = sh.sheet1
-            # Add Header
-            sheet.append_row(["email", "password", "name", "approved", "role"])
-        except Exception as e:
-            st.error(f"시트 생성 실패. 구글 드라이브에 '{SHEET_NAME}' 시트를 직접 생성하고 서비스 계정과 공유해주세요. ({e})")
-            return
-            
-    # Check header
-    current_data = sheet.get_all_values()
-    
-    # Standards: email, password, name, approved, role, last_login, analysis_count
-    cols = ["email", "password", "name", "approved", "role", "last_login", "analysis_count"]
-    
-    if not current_data:
-         sheet.append_row(cols)
-    else:
-        # Check if first row contains all columns
-        first_row = [str(cell).strip().lower() for cell in current_data[0]]
-        for col in cols:
-            if col not in first_row:
-                # Add missing column to the end
-                idx = len(first_row) + 1
-                sheet.update_cell(1, idx, col)
-                first_row.append(col)
+            # Try to open existing sheet
+            sheet = client.open(SHEET_NAME).sheet1
+        except gspread.SpreadsheetNotFound:
+            try:
+                # Create new sheet if possible
+                sh = client.create(SHEET_NAME)
+                # Note: sharing might fail depending on service account permissions
+                try:
+                    sh.share(st.secrets["gcp_service_account"]["client_email"], perm_type='user', role='owner')
+                except: pass
+                sheet = sh.sheet1
+                # Add Header
+                sheet.append_row(["email", "password", "name", "approved", "role"])
+            except Exception as e:
+                st.warning(f"시트 초기화 지연: {e}. 잠시 후 다시 시도해주세요.")
+                return
+                
+        # Check header and columns
+        current_data = sheet.get_all_values()
+        cols = ["email", "password", "name", "approved", "role", "last_login", "analysis_count"]
+        
+        if not current_data:
+             sheet.append_row(cols)
+        else:
+            first_row = [str(cell).strip().lower() for cell in current_data[0]]
+            for col in cols:
+                if col not in first_row:
+                    idx = len(first_row) + 1
+                    sheet.update_cell(1, idx, col)
+                    first_row.append(col)
+
+        # --- Initialize CONFIGS sheet ---
+        try:
+            sh = client.open(SHEET_NAME)
+            try:
+                sh.worksheet("CONFIGS")
+            except gspread.WorksheetNotFound:
+                config_sheet = sh.add_worksheet(title="CONFIGS", rows="100", cols="2")
+                config_sheet.append_row(["key", "value"])
+        except: pass
+        
+    except Exception as e:
+        st.error(f"데이터베이스 연결 초기화 실패: {e}")
 
     # --- Initialize CONFIGS sheet ---
     try:
@@ -103,6 +117,7 @@ def set_global_setting(key, value):
         return False
 
 
+@st.cache_data(ttl=60) # Cache user list for 1 minute to avoid hammering API
 def get_all_users():
     """Fetches all user data as a DataFrame."""
     client = get_connection()

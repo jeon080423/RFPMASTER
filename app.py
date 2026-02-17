@@ -51,7 +51,10 @@ st.markdown("""
 # -----------------------------------------------------------------------------
 # 2. Authentication (Sidebar)
 # -----------------------------------------------------------------------------
-auth.init_db()
+try:
+    auth.init_db()
+except Exception as e:
+    st.error(f"⚠️ 시스템 초기화 오류: {e}")
 
 if "user" not in st.session_state:
     st.session_state.user = None
