@@ -489,7 +489,12 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
             else:
                 actual_model = get_flash_model(key) if use_flash else get_best_available_model(key)
                 
-            llm = ChatGoogleGenerativeAI(temperature=0.0, model=actual_model, google_api_key=key)
+            # Normalize: ensure 'models/' prefix for Gemini models
+            if actual_model.startswith("gemini-") and not actual_model.startswith("models/"):
+                actual_model = f"models/{actual_model}"
+                
+            # Default to stable v1 (v1beta often causes 404 for standard models)
+            llm = ChatGoogleGenerativeAI(temperature=0.0, model=actual_model, google_api_key=key, version="v1")
             chain = prompt_template | llm | StrOutputParser()
             return chain.invoke(params)
         except Exception as e:
@@ -500,9 +505,8 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                 # Sequence of safe fallbacks: (model_name, api_version)
                 safe_fallbacks = [
                     ("models/gemini-1.5-flash-latest", "v1"),
-                    ("gemini-1.5-flash-latest", "v1"),
                     ("models/gemini-1.5-pro-latest", "v1"),
-                    ("gemini-pro", "v1")
+                    ("models/gemini-pro", "v1")
                 ]
                 for fallback_model, fallback_version in safe_fallbacks:
                     if actual_model != fallback_model:
@@ -523,19 +527,19 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
             skipable_errors = [
                 'rate_limit', '429', 'resource_exhausted', # Limits
                 '404', 'not found',                        # Still getting 404 after fallbacks
-                '401', 'unauthorized',                     # Invalid key
+                '401', 'unauthorized',                     # Invalid key (Expired/Old)
                 '403', 'forbidden', 'permission'           # Permission issue
             ]
             
             if any(err in error_str for err in skipable_errors):
-                st.warning(f"🔄 제미나이 {i + 1}번 키 오류 ({error_str[:100]}...). 다음 키로 전환합니다.")
+                st.warning(f"🔄 제미나이 {i + 1}번 키 오류 ({error_str[:120]}...). 다음 키로 전환합니다.")
                 continue # Try the next key in the list
             else:
                 raise e
                 
     # If we reach here, everything failed.
     auth.record_quota_exhaustion()
-    raise Exception("모든 제미나이 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM) 또는 일일 한도(RPD)에 도달했을 때 발생합니다. 약 1분 후 다시 시도하거나 오후 5시 초기화 이후 이용해 주세요.")
+    raise Exception("모든 제미나이 API 키가 작동하지 않거나 호출 한도에 도달했습니다. (404/401/429 등) 각 키가 유효한지, 그리고 모델명이 올바른지 다시 확인해 주세요. 약 1분 후 다시 시도하시거나 오후 5시 초기화 이후 이용을 권장합니다.")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
 
