@@ -307,7 +307,7 @@ if start_analysis:
 
         has_prev = bool(prev_text.strip())
 
-        tabs = st.tabs(["📊 키워드 인사이트", " 조사설계", "📐 표본설계", "📋 필수 제안 항목", "📄 준비서류", "✅ 목차 체크리스트", "🎯 상세 전략"])
+        tabs = st.tabs(["📊 키워드 인사이트", "🔬 조사/분석 설계", "📐 표본/품질 관리", "� 사업 관리", "📄 준비서류", "✅ 목차 체크리스트", "🎯 상세 전략"])
         
         if "analysis_results" not in st.session_state:
             st.session_state.analysis_results = {}
@@ -346,72 +346,72 @@ if start_analysis:
                         st.error(f"{tab_name} 분석 중 오류가 발생했습니다: {e}")
 
         # =====================================================================
-        # Common: run_comparison_analysis (Condition: Prev exists -> Only Compare, Else -> Single Analysis)
+        # Common: run_comparison_analysis
+        # Refactored: Always show Current Analysis (List Format) + Comparison (Table if exists)
         # =====================================================================
         def run_comparison_analysis(tab_name, instructions_current, instructions_compare, keywords, current_text, previous_text, target_tab):
-            """If prev doc exists, ONLY show comparison. Else, show current analysis."""
+            """Analyze current doc (New List Format), then compare with previous if available."""
             with target_tab:
                 st.header(tab_name)
                 relevant_current = get_relevant_context(current_text, keywords)
+                
+                # 1. Current Analysis (Senior Researcher Persona, List Format)
+                with st.spinner(f"{tab_name} - 금년도 핵심 요건 분석 중..."):
+                    try:
+                        time.sleep(10)
+                        # New Persona and Goal from User Request
+                        sys_prompt = (
+                            "당신은 공공기관 및 정부 부처의 조사·연구 용역 제안서를 작성하는 수석 연구원(Senior Researcher)입니다.\n"
+                            "업로드된 제안요청서의 텍스트를 분석하여, 제안서 본문에 기술해야 할 핵심 과업 요건을 체계적으로 정리해 주세요.\n\n"
+                            "# Analysis Goal\n"
+                            "제안서의 '수행 계획' 파트를 작성하기 위해, 발주처가 요구하는 구체적인 조사 방법, 절차, 분석 수준, 관리 요건을 빠짐없이 추출하세요.\n\n"
+                            "# Output Rule\n"
+                            "1. 반드시 마크다운 불릿 리스트(Bulleted List) 형식을 사용하세요. (표 사용 지양)\n"
+                            "2. 각 항목의 핵심 내용은 **굵게(Bold)** 표시하세요.\n"
+                            "3. 문서에 명시된 내용이 있으면 구체적인 수치나 조건을 적고, 해당 내용이 발견된 페이지나 문맥이 있다면 [출처]를 간략히 표기하세요.\n"
+                            "4. 내용이 없으면 '명시되지 않음'으로 적으세요.\n"
+                            "5. 반드시 한국어로 작성하세요.\n\n"
+                            f"# Analysis Scope (Categories to Extract)\n{instructions_current}"
+                        )
+                        prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
+                        chain = prompt | llm | StrOutputParser()
+                        response = invoke_with_retry(chain, {"text": relevant_current})
+                        response = response.replace("<br>", " ").replace("<br/>", " ")
+                        
+                        st.subheader("� 금년도 핵심 과업 요건")
+                        st.markdown(response)
+                        st.session_state.analysis_results[tab_name] = response
+                    except Exception as e:
+                        st.error(f"{tab_name} 분석 중 오류: {e}")
 
-                # CASE 1: Previous document exists -> Comparison Analysis ONLY
+                # 2. Previous Comparison (Table Format, Only if prev exists)
                 if previous_text.strip():
                     relevant_prev = get_relevant_context(previous_text, keywords)
                     with st.spinner(f"{tab_name} - 직전 연도 대비 비교 분석 중..."):
                         try:
                             time.sleep(15)
                             compare_prompt = ChatPromptTemplate.from_template(
-                                "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
-                                "아래의 [직전 연도 문서]와 [금년도 문서]를 비교 분석하세요.\n\n"
+                                "당신은 공공기관 입찰 전문 분석가입니다.\n"
+                                "아래 [직전 연도]와 [금년도] 문서를 비교하여 변경사항을 분석하세요.\n\n"
                                 "**핵심 규칙:**\n"
-                                "- 반드시 마크다운 표 형식만 사용하세요. 표 외에 어떤 텍스트도 추가하지 마세요.\n"
-                                "- 발주기관마다 같은 개념을 다른 용어로 부를 수 있습니다. "
-                                "의미가 유사한 항목은 같은 행에서 비교하세요. "
-                                "예: '과업범위'와 '사업범위', '모집단'과 '조사대상', '사업비'와 '예산' 등\n"
-                                "- '비고' 열에는 변경된 내용이 수주 전략에 어떤 의미인지 한 줄로 기술하세요.\n"
-                                "- 반드시 한국어로만 작성하세요.\n\n"
+                                "- 반드시 마크다운 표(Table) 형식만 사용하세요.\n"
+                                "- 발주기관마다 용어가 다를 수 있으니 유연하게 비교하세요.\n"
+                                "- '비고' 열에는 변경이 수주 전략에 미치는 시사점을 요약하세요.\n\n"
                                 f"{instructions_compare}\n\n"
                                 "[직전 연도 문서]\n{prev_text}\n\n[금년도 문서]\n{curr_text}"
                             )
                             chain = compare_prompt | llm | StrOutputParser()
                             compare_res = invoke_with_retry(chain, {"prev_text": relevant_prev, "curr_text": relevant_current})
                             compare_res = compare_res.replace("<br>", " ").replace("<br/>", " ")
-                            st.subheader("🔄 직전 연도 대비 변경 사항")
+                            
+                            st.subheader("� 직전 연도 대비 변경 사항")
                             st.markdown(compare_res)
                             st.session_state.analysis_results[f"{tab_name} (비교)"] = compare_res
                         except Exception as e:
                             st.error(f"{tab_name} 비교 분석 중 오류: {e}")
 
-                # CASE 2: No previous document -> Single Year Analysis
-                else:
-                    with st.spinner(f"{tab_name} - 금년도 분석 중..."):
-                        try:
-                            time.sleep(10)
-                            sys_prompt = (
-                                "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
-                                "다음 규칙을 반드시 준수하세요:\n"
-                                "1. 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요.\n"
-                                "2. 문서에 명시되지 않은 도구, 기술, 방법론, 의견은 절대로 추가하지 마세요.\n"
-                                "3. 내용이 없으면 '해당 내용 없음'으로 표기하세요.\n"
-                                "4. 반드시 마크다운 표(table) 형식만 사용하세요. 표 외에 불릿 목록이나 텍스트 설명은 추가하지 마세요.\n"
-                                "5. HTML 태그를 사용하지 말고 마크다운만 사용하세요.\n"
-                                "6. 반드시 자연스러운 '한국어'로만 작성하세요.\n"
-                                "7. 발주기관마다 용어가 다를 수 있으므로, 유사한 의미의 용어는 같은 항목으로 분류하세요.\n\n"
-                                f"[분석 지시사항]\n{instructions_current}"
-                            )
-                            prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
-                            chain = prompt | llm | StrOutputParser()
-                            response = invoke_with_retry(chain, {"text": relevant_current})
-                            response = response.replace("<br>", " ").replace("<br/>", " ")
-                            st.subheader("📌 금년도 분석 결과")
-                            st.markdown(response)
-                            st.session_state.analysis_results[tab_name] = response
-                        except Exception as e:
-                            st.error(f"{tab_name} 금년도 분석 중 오류: {e}")
-                            return
-
         # =====================================================================
-        # Common: run_task_comparison_analysis (Specific for Tab 4 - Task Description)
+        # Common: run_task_comparison_analysis (Specific for Tab 4)
         # =====================================================================
         def run_task_comparison_analysis(tab_name, instructions_current, keywords, current_text, previous_text, target_tab):
             """Specific comparison for Task Description (Scope, Content, Cautions)."""
@@ -419,22 +419,40 @@ if start_analysis:
                 st.header(tab_name)
                 relevant_current = get_relevant_context(current_text, keywords)
                 
-                # Check if previous task description exists
-                has_prev_task = bool(previous_text.strip())
+                # 1. Current Task Analysis
+                with st.spinner(f"{tab_name} - 금년도 과업 분석 중..."):
+                    try:
+                        time.sleep(10)
+                        sys_prompt = (
+                            "당신은 공공기관 과업지시서 전문 분석가입니다.\n"
+                            "제안서 작성에 필수적인 과업 수행 요건을 아래 기준에 맞춰 추출하세요.\n\n"
+                            "# Output Rule\n"
+                            "- 마크다운 리스트 형식을 권장합니다.\n"
+                            "- 문서에 명시된 '필수' 사항을 빠짐없이 기록하세요.\n\n"
+                            f"{instructions_current}"
+                        )
+                        prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
+                        chain = prompt | llm | StrOutputParser()
+                        response = invoke_with_retry(chain, {"text": relevant_current})
+                        st.subheader("� 금년도 필수 과업 요건")
+                        st.markdown(response)
+                        st.session_state.analysis_results[tab_name] = response
+                    except Exception as e:
+                        st.error(f"{tab_name} 분석 중 오류: {e}")
 
-                if has_prev_task:
+                # 2. Comparison Analysis
+                if previous_text.strip():
                     relevant_prev = get_relevant_context(previous_text, keywords)
                     with st.spinner(f"{tab_name} - 과업지시서 비교 분석 중..."):
                         try:
                             time.sleep(15)
                             compare_prompt = ChatPromptTemplate.from_template(
-                                "당신은 공공기관 입찰 및 과업지시서 전문 분석가입니다.\n"
+                                "당신은 과업지시서 비교 분석 전문가입니다.\n"
                                 "아래 [직전 과업지시서]와 [금년도 과업지시서]를 비교하여,\n"
-                                "**조사 범위, 과업 내용, 주의사항(특이사항)** 측면에서 변경된 내용을 분석하세요.\n\n"
+                                "**조사 범위, 과업 내용, 주의사항(특이사항)** 측면에서 상세히 비교하세요.\n\n"
                                 "**핵심 규칙:**\n"
                                 "- 반드시 마크다운 표 형식만 사용하세요.\n"
-                                "- '비고' 열에는 변경사항이 제안서 작성 시 유의해야 할 점을 기술하세요.\n"
-                                "- 반드시 한국어로만 작성하세요.\n\n"
+                                "- '비고' 열에는 변경사항 대응 전략을 기술하세요.\n\n"
                                 "**[비교 항목]**\n"
                                 "| 구분 | 직전 과업지시서 | 금년도 과업지시서 | 비고(제안 전략) |\n"
                                 "|---|---|---|---|\n"
@@ -446,33 +464,12 @@ if start_analysis:
                             )
                             chain = compare_prompt | llm | StrOutputParser()
                             compare_res = invoke_with_retry(chain, {"prev_text": relevant_prev, "curr_text": relevant_current})
-                            compare_res = compare_res.replace("<br>", " ").replace("<br/>", " ")
-                            st.subheader("🔄 과업지시서 변경 사항 비교")
+                            
+                            st.subheader("� 과업지시서 변경 사항 비교")
                             st.markdown(compare_res)
                             st.session_state.analysis_results[f"{tab_name} (과업 비교)"] = compare_res
                         except Exception as e:
                             st.error(f"{tab_name} 과업 비교 분석 중 오류: {e}")
-                else:
-                    # Fallback to single analysis if no prev task decription
-                    with st.spinner(f"{tab_name} - 금년도 과업 분석 중..."):
-                        try:
-                            time.sleep(10)
-                            sys_prompt = (
-                                "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
-                                "다음 규칙을 반드시 준수하세요:\n"
-                                "1. 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요.\n"
-                                "2. 반드시 마크다운 표(table) 형식만 사용하세요.\n"
-                                f"[분석 지시사항]\n{instructions_current}"
-                            )
-                            prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
-                            chain = prompt | llm | StrOutputParser()
-                            response = invoke_with_retry(chain, {"text": relevant_current})
-                            response = response.replace("<br>", " ").replace("<br/>", " ")
-                            st.subheader("📌 금년도 분석 결과")
-                            st.markdown(response)
-                            st.session_state.analysis_results[tab_name] = response
-                        except Exception as e:
-                            st.error(f"{tab_name} 분석 중 오류: {e}")
 
         # =====================================================================
         # Tab 1: Keyword Insight
@@ -502,118 +499,82 @@ if start_analysis:
                     st.session_state.analysis_results["키워드 인사이트"] = f"Top Keywords: {str(top_keywords)}\n\n{insight}"
                 except Exception as e:
                     st.error(f"키워드 분석 중 오류: {e}")
-
+        
         time.sleep(5)
 
         # =====================================================================
-        # Tab 2: 조사설계 (with comparison if prev docs available)
+        # Tab 2: 조사/분석 설계 (Categories 1 & 3 & 5)
         # =====================================================================
         run_comparison_analysis(
-            "🔬 조사설계",
-            # Current analysis instructions
-            "제안요청서에서 조사설계 및 과업 내용을 면밀히 검토하여 아래 표로 정리하세요.\n"
-            "문서 전체를 꼼꼼히 읽고, 과업의 세부 요구사항까지 빠짐없이 추출하세요.\n\n"
-            "| 구분 | 내용 |\n|---|---|\n"
-            "| 사업명 | |\n"
-            "| 사업 목적 | |\n"
-            "| 사업 배경 | |\n"
-            "| 사업 기간 | |\n"
-            "| 사업 예산(부가세 포함 여부) | |\n"
-            "| 발주 기관 | |\n"
-            "| 계약 방식(총액/단가 등) | |\n"
-            "| 조사 대상/모집단 | |\n"
-            "| 조사 지역/범위 | |\n"
-            "| 조사 방법(정량/정성/혼합) | |\n"
-            "| 조사 도구(설문/면접/관찰 등) | |\n"
-            "| 주요 과업 내용 (세부 나열) | |\n"
-            "| 과업 수행 절차/단계 | |\n"
-            "| 예비조사/사전조사 여부 | |\n"
-            "| 자문위원회/전문가 검토 요건 | |\n"
-            "| 중간보고/최종보고 시기 | |\n"
-            "| 납품 성과물 목록 | |\n"
-            "| 기타 특이사항/유의사항 | |\n\n"
-            "'주요 과업 내용' 항목은 문서에 기술된 세부 과업을 번호를 붙여 모두 나열하세요.\n"
-            "각 항목은 문서에 명시된 내용만 기재하세요.",
+            "🔬 조사/분석 설계",
+            # Current analysis instructions (New List Categories)
+            "다음 카테고리 내용을 추출하세요:\n"
+            "## 1. 조사 설계 (Research Design)\n"
+            "* 조사 방법 (구체적 방식, 온/오프라인 등)\n"
+            "* 조사 대상 및 범위 (모집단 정의, 유효 표본 수)\n"
+            "* 조사 지역\n\n"
+            "## 3. 조사 내용 및 도구 (Instruments)\n"
+            "* 설문지 구성 요건 (시계열 유지, 신규 개발 등)\n"
+            "* 사전 조사(Pilot Test) 요건\n"
+            "* 전문가 자문 및 검토 요건\n\n"
+            "## 5. 데이터 분석 및 활용 (Analysis)\n"
+            "* 필수 분석 기법 (빈도/교차 분석, 가중치 산출, 고급 통계 등)\n"
+            "* 결과 활용 방안 (인포그래픽, 정책 제언 등)",
             # Comparison instructions
-            "아래 표 형식으로 직전 연도와 금년도의 조사설계 관련 항목을 비교하세요:\n\n"
-            "| 비교 항목 | 직전 연도 | 금년도 | 비고 |\n|---|---|---|---|\n"
-            "| 사업 목적 | | | |\n"
-            "| 사업 기간 | | | |\n"
-            "| 사업 예산 | | | |\n"
-            "| 조사 대상/범위 | | | |\n"
+            "아래 표 형식으로 '조사 설계' 및 '분석 요건' 관련 변경사항을 비교하세요:\n\n"
+            "| 구분 | 직전 연도 | 금년도 | 비고 |\n|---|---|---|---|\n"
             "| 조사 방법 | | | |\n"
-            "| 주요 과업 내용 변경점 | | | |\n"
-            "| 납품 성과물 변경점 | | | |\n"
-            "| 기타 변경 사항 | | | |\n\n"
-            "'비고' 열에는 변경이 수주 전략에 미치는 영향을 한 줄로 기술하세요.\n"
-            "변경이 없으면 '변경 없음', 해당 항목이 없으면 '명시 없음'으로 표기하세요.",
-            ["조사 개요", "과업 내용", "과업 목적", "과업 범위", "수행 내용", "사업 목적", "사업 개요", "사업 기간", "사업 예산", "조사 대상", "조사 방법", "과업 수행", "세부 과업", "연구 목적", "용역 내용"],
+            "| 조사 대상/표본 | | | |\n"
+            "| 조사 내용/설문 | | | |\n"
+            "| 분석 방법 | | | |\n"
+            "| 결과 활용 | | | |\n",
+            ["조사 개요", "과업 내용", "과업 목적", "과업 범위", "수행 내용", "사업 목적", "사업 개요", "사업 기간", "사업 예산", "조사 대상", "조사 방법", "과업 수행", "세부 과업", "연구 목적", "용역 내용", "분석 방법", "통계"],
             full_current_text, prev_text, tabs[1]
         )
 
         # =====================================================================
-        # Tab 3: 표본설계 (with comparison if prev docs available)
+        # Tab 3: 표본/품질 관리 (Categories 2 & 4)
         # =====================================================================
         run_comparison_analysis(
-            "📐 표본설계",
+            "📐 표본/품질 관리",
             # Current analysis instructions
-            "제안요청서에서 표본설계 관련 내용을 면밀히 검토하여 아래 표로 정리하세요.\n"
-            "수치, 비율, 구체적 기준을 가능한 한 문서 원문 그대로 추출하세요.\n\n"
-            "| 구분 | 내용 |\n|---|---|\n"
-            "| 조사 대상(모집단) 정의 | |\n"
-            "| 조사 대상 연령/성별/지역 범위 | |\n"
-            "| 목표 표본 크기(총 수) | |\n"
-            "| 표본 추출 방법(확률/비확률/할당 등) | |\n"
-            "| 층화 기준(지역/성별/연령 등) | |\n"
-            "| 세부 할당 기준 및 비율 | |\n"
-            "| 표본 오차 한계 | |\n"
-            "| 신뢰 수준 | |\n"
-            "| 가중치 산출/적용 방법 | |\n"
-            "| 조사 도구(설문지/면접지 등) | |\n"
-            "| 조사 방법(온라인/대면/전화 등) | |\n"
-            "| 조사 기간 | |\n"
-            "| 데이터 클리닝/검증 절차 | |\n"
-            "| 분석 방법(통계기법 등) | |\n"
-            "| 기타 특이사항 | |\n\n"
-            "각 항목은 문서에 명시된 수치와 방법만 기재하세요.",
+            "다음 카테고리 내용을 추출하세요:\n"
+            "## 2. 표본 설계 (Sampling Design)\n"
+            "* 모집단 및 표본추출틀(Frame)\n"
+            "* 표본 추출 방법 (층화/할당/무작위 등 상세)\n"
+            "* 층화 기준 및 할당 표\n"
+            "* 표본 오차 및 신뢰수준\n\n"
+            "## 4. 실사 운영 및 품질 관리 (Fieldwork & QC)\n"
+            "* 조사원 운용 (자격 요건, 교육 필수 사항)\n"
+            "* 데이터 검증(Verification) 비율 및 방법 (Back-check 등)\n"
+            "* 데이터 클리닝 (Logic Check) 및 이상치 처리\n"
+            "* 응답률 제고 방안 (답례품, 콜백 기준 등)",
             # Comparison instructions
-            "아래 표 형식으로 직전 연도와 금년도의 표본설계 관련 항목을 비교하세요:\n\n"
-            "| 비교 항목 | 직전 연도 | 금년도 | 비고 |\n|---|---|---|---|\n"
-            "| 조사 대상(모집단) | | | |\n"
-            "| 표본 크기 | | | |\n"
+            "아래 표 형식으로 '표본 설계' 및 '실사 품질관리' 관련 변경사항을 비교하세요:\n\n"
+            "| 구분 | 직전 연도 | 금년도 | 비고 |\n|---|---|---|---|\n"
             "| 표본 추출 방법 | | | |\n"
-            "| 층화/할당 기준 | | | |\n"
+            "| 목표 표본 수 | | | |\n"
             "| 오차/신뢰 수준 | | | |\n"
-            "| 조사 방법 | | | |\n"
-            "| 조사 기간 | | | |\n"
-            "| 분석 방법 | | | |\n"
-            "| 기타 변경 사항 | | | |\n\n"
-            "'비고' 열에는 변경이 표본 품질이나 수주 전략에 미치는 영향을 한 줄로 기술하세요.\n"
-            "변경이 없으면 '변경 없음', 해당 항목이 없으면 '명시 없음'으로 표기하세요.",
-            ["표본", "모집단", "오차", "신뢰 수준", "추출 방법", "할당", "층화", "가중치", "표본 크기", "표본 설계", "조사 대상", "응답자", "설문", "면접", "조사 인원", "분석 방법"],
+            "| 조사원 요건 | | | |\n"
+            "| 품질관리/검증 | | | |\n",
+            ["표본", "모집단", "오차", "신뢰 수준", "추출 방법", "할당", "층화", "가중치", "표본 크기", "표본 설계", "조사 대상", "응답자", "설문", "면접", "조사 인원", "분석 방법", "품질", "검증", "에디팅"],
             full_current_text, prev_text, tabs[2]
         )
 
         # =====================================================================
-        # Tab 4: 필수 제안 항목 (Task Description Comparison)
+        # Tab 4: 사업 관리 (Category 6)
         # =====================================================================
         run_task_comparison_analysis(
-            "📋 필수 제안 항목",
-            "제안요청서에 명시된 필수 수행 활동과 성과품을 면밀히 검토하여 아래 표들로 정리하세요.\n"
-            "과업 내용의 세부 요구사항, 발주처가 반드시 포함하라고 명시한 항목을 빠짐없이 추출하세요.\n\n"
-            "**[필수 수행 활동]**\n\n"
-            "| 번호 | 수행 활동 | 세부 내용 | 비고 |\n|---|---|---|---|\n"
-            "| 1 | | | |\n\n"
-            "**[납품 성과물]**\n\n"
-            "| 번호 | 성과물 명칭 | 규격/형식 | 수량 | 제출 시기 |\n|---|---|---|---|---|\n"
-            "| 1 | | | | |\n\n"
-            "**[보고 체계]**\n\n"
-            "| 보고 유형 | 시기 | 내용 | 비고 |\n|---|---|---|---|\n"
-            "| 착수보고 | | | |\n"
-            "| 중간보고 | | | |\n"
-            "| 최종보고 | | | |\n\n"
-            "문서에 명시된 내용만 기재하세요.",
-            ["과업 지시", "과업 내용", "수행 사항", "주의 사항", "유의 사항", "특이 사항", "과업 범위", "제안 요구", "세부 과업"],
+            "� 사업 관리",
+            "다음 카테고리 내용을 추출하세요:\n"
+            "## 6. 사업 관리 및 보고 (Project Management)\n"
+            "* 보고 주기 및 체계 (착수/중간/최종/수시)\n"
+            "* 일정 관리 (계약일 기준 착수보고, 중간보고 시기 등)\n"
+            "* 인력 운영 및 보안 관리 계획\n\n"
+            "## 필수 과업 및 성과물\n"
+            "* 필수 수행 활동 상세 목록\n"
+            "* 최종 납품 성과물 목록 및 형태",
+            ["과업 지시", "과업 내용", "수행 사항", "주의 사항", "유의 사항", "특이 사항", "과업 범위", "제안 요구", "세부 과업", "보고", "일정", "관리"],
             full_current_text, prev_text, tabs[3]
         )
 
