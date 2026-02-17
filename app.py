@@ -478,8 +478,8 @@ def invoke_with_retry(prompt_template, params, api_keys, max_retries=3, use_flas
             if 'rate_limit' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
                 # Switch to next key
                 current_key_idx = (current_key_idx + 1) % total_keys
-                st.warning(f"🔄 API 한도 초과 발생. {current_key_idx + 1}번 키로 전환하며 10초간 대기합니다... (시도 {attempt+1})")
-                time.sleep(10) # Increased delay to allow quota reset
+                st.warning(f"🔄 API 한도 초과 발생. {current_key_idx + 1}번 키로 전환하며 5초간 대기합니다... (시도 {attempt+1})")
+                time.sleep(5) # Reduced delay to 5 seconds
             else:
                 raise e
     raise Exception("모든 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM)에 도달했을 때 발생합니다. 약 1분 후 다시 시도해주세요.")
