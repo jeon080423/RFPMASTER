@@ -688,7 +688,7 @@ else:
             st.markdown(analysis_text, unsafe_allow_html=True)
             
             st.markdown("---")
-            st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 상단 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
+            st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 아래 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
 
         with tabs[1]:
             st.header("📊 키워드 인사이트")
@@ -735,3 +735,4 @@ else:
                 key="final_dw_btn_stable_cached"
             )
 st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
+
