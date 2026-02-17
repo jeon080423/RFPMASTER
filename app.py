@@ -333,9 +333,12 @@ def get_best_available_model(api_key):
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
         priority = [
+            "models/gemini-2.5-pro",
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-pro-exp",
+            "models/gemini-2.0-flash",
             "models/gemini-1.5-pro",
             "models/gemini-1.5-pro-latest",
-            "models/gemini-2.0-flash-exp",
             "models/gemini-1.5-flash",
             "models/gemini-pro"
         ]
@@ -355,11 +358,12 @@ def get_flash_model(api_key):
         genai.configure(api_key=api_key)
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # Priority: Flash 1.5 -> Flash 2.0 -> Pro 1.5
+        # Priority: Flash 2.5 -> Flash 2.0 -> Flash 1.5
         priority = [
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash",
             "models/gemini-1.5-flash",
             "models/gemini-1.5-flash-latest",
-            "models/gemini-2.0-flash-exp",
             "models/gemini-1.5-pro"
         ]
         
