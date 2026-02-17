@@ -12,6 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import datetime
 import time
+import google.generativeai as genai
 import auth
 import email_utils
 
@@ -303,8 +304,8 @@ if start_analysis:
             st.code(full_current_text[:1000] + "...")
 
     try:
-        # Reverting to gemini-1.5-pro as requested by user
-        MODEL_NAME = "gemini-1.5-pro"
+        # Trying gemini-1.5-pro-latest which often resolves aliases/404 issues better than 'gemini-1.5-pro'
+        MODEL_NAME = "gemini-1.5-pro-latest"
         llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
         has_prev = bool(prev_text.strip())
@@ -432,5 +433,16 @@ if start_analysis:
 
     except Exception as e:
         st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
+        # Diagnostic: List available models if NOT_FOUND error occurs
+        if "NOT_FOUND" in str(e) or "not found" in str(e).lower():
+            with st.expander("🛠️ API 모델 접근 진단"):
+                try:
+                    genai.configure(api_key=api_key)
+                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    st.write("현재 API 키로 사용 가능한 모델 목록:")
+                    st.code("\n".join(models))
+                    st.info("여기에 'models/gemini-1.5-pro'가 없는 경우, 해당 계정의 API 접근 권한을 확인해 주세요.")
+                except Exception as diag_e:
+                    st.write("모델 목록을 불러오지 못했습니다. API 키가 올바른지 확인해 주세요.")
 
 st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini 1.5 Pro</div>', unsafe_allow_html=True)
