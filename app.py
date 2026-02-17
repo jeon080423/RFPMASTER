@@ -110,33 +110,7 @@ if not st.session_state.user['approved']:
         st.rerun()
     st.stop()
 
-# -----------------------------------------------------------------------------
-# 3. Authenticated Main Application
-# -----------------------------------------------------------------------------
 
-# Sidebar Logic for Authenticated Users
-with st.sidebar:
-    st.write(f"접속자: **{st.session_state.user['name']}**님")
-    if st.button("로그아웃", key="logout_sidebar"):
-        st.session_state.user = None
-        st.rerun()
-    
-    # Admin Logic
-    if st.session_state.user['role'] == 'admin':
-        admin_dashboard()
-        
-    st.markdown("---")
-    st.image("https://cdn-icons-png.flaticon.com/512/2921/2921222.png", width=50) 
-    st.header("설정 (Settings)")
-    
-    # API Key Management (Secrets & Env)
-    api_key = st.secrets["groq"]["api_key"]
-    if not api_key:
-        api_key = os.environ.get("GROQ_API_KEY")
- 
-    
-    st.markdown("---")
-    st.markdown("**Developed by ㅈㅅㅎ**")
 
 
 # --- Main App Logic (from previous version) ---
@@ -207,22 +181,7 @@ def create_word_chart(keywords):
     return fig
 
 
-# UI Layout
-# (Moved into login_page function above, or handled by main loop below)
 
-if not st.session_state.user:
-    login_page()
-    st.stop()
-
-# If logic for logged in but unapproved users
-if not st.session_state.user['approved']:
-    st.markdown('<div class="main-header" style="text-align: center;">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
-    st.warning(f"환영합니다, {st.session_state.user['name']}님!")
-    st.info("현재 계정 승인 대기 중입니다. 관리자 승인 후 이메일 알림이 발송됩니다.")
-    if st.button("로그아웃"):
-        st.session_state.user = None
-        st.rerun()
-    st.stop()
 
 # -----------------------------------------------------------------------------
 # 3. Authenticated Main Application
