@@ -406,10 +406,10 @@ def get_best_available_model(api_key):
         
         for p in priority:
             if p in available_models:
-                return p.replace("models/", "")
+                return p
         
         if available_models:
-            return available_models[0].split("/")[-1]
+            return available_models[0]
     except: pass
     return "gemini-1.5-flash"
 
@@ -438,7 +438,7 @@ def get_flash_model(api_key):
         
         for p in priority:
             if p in available_models:
-                return p.replace("models/", "")
+                return p
     except: pass
     return "gemini-1.5-flash"
 
@@ -495,17 +495,24 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
         except Exception as e:
             error_str = str(e).lower()
             
-            # Handle 404 Not Found by falling back to guaranteed stable IDs
+            # Handle 404 Not Found or other naming issues by falling back to guaranteed stable IDs and versions
             if "not found" in error_str or "404" in error_str:
-                # Sequence of safe fallbacks (trying both with and without models/ prefix)
+                # Sequence of safe fallbacks: (model_name, api_version)
                 safe_fallbacks = [
-                    "gemini-1.5-flash-latest", "models/gemini-1.5-flash-latest",
-                    "gemini-1.5-pro-latest", "models/gemini-1.5-pro-latest"
+                    ("models/gemini-1.5-flash-latest", "v1"),
+                    ("gemini-1.5-flash-latest", "v1"),
+                    ("models/gemini-1.5-pro-latest", "v1"),
+                    ("gemini-pro", "v1")
                 ]
-                for fallback_model in safe_fallbacks:
+                for fallback_model, fallback_version in safe_fallbacks:
                     if actual_model != fallback_model:
                         try:
-                            llm = ChatGoogleGenerativeAI(temperature=0.0, model=fallback_model, google_api_key=key)
+                            llm = ChatGoogleGenerativeAI(
+                                temperature=0.0, 
+                                model=fallback_model, 
+                                google_api_key=key,
+                                version=fallback_version
+                            )
                             return (prompt_template | llm | StrOutputParser()).invoke(params)
                         except Exception as inner_e:
                             inner_msg = str(inner_e).lower()
@@ -515,7 +522,7 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
             # Define skipable errors that should trigger rotation to NEXT key
             skipable_errors = [
                 'rate_limit', '429', 'resource_exhausted', # Limits
-                '404', 'not found',                        # Missing model/endpoint
+                '404', 'not found',                        # Still getting 404 after fallbacks
                 '401', 'unauthorized',                     # Invalid key
                 '403', 'forbidden', 'permission'           # Permission issue
             ]
