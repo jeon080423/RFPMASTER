@@ -570,9 +570,17 @@ else:
 # -----------------------------------------------------------------------------
 # 5. Analysis Logic (only for approved users)
 # -----------------------------------------------------------------------------
+    def sanitize_spaces(text):
+        """Replaces non-breaking spaces and other artifacts with standard spaces."""
+        if not text: return text
+        return text.replace('\xa0', ' ').replace('\u200b', '').replace('\uFEFF', '').strip()
+
     def detect_project_name(text):
         """Attempts to extract the project name from the first page of the RFP with robust regex."""
         if not text: return "미지정 사업"
+        
+        # Sanitize input text first
+        text = sanitize_spaces(text)
         
         # 1. Look for keywords using regex to handle prefixes (1., 가., 등)
         lines = [l.strip() for l in text[:3000].split('\n') if l.strip()]
@@ -598,10 +606,11 @@ else:
         
         # 2. Heuristic fallback: Look for a long line in the first 10 non-empty lines
         # Usually titles are prominent.
-        for line in lines[:10]:
-            # Guess it's a title if it's long and doesn't look like an address or simple date
-            if 15 < len(line) < 100 and not any(x in line for x in ["주소", "일시", "일자", "연락처"]):
-                return line
+        if lines:
+            for line in lines[:10]:
+                # Guess it's a title if it's long and doesn't look like an address or simple date
+                if 15 < len(line) < 100 and not any(x in line for x in ["주소", "일시", "일자", "연락처"]):
+                    return sanitize_spaces(line)
         
         return "미지정 사업"
 
@@ -615,10 +624,12 @@ else:
 
     def clean_ai_output(text):
         """
-        Forcefully removes <br> tags. 
-        Replaces with \n generally, but with '; ' if inside a table line to prevent row breakage.
+        Forcefully removes <br> tags and cleans artifacts.
         """
         if not text: return ""
+        
+        # Remove non-breaking spaces and artifacts
+        text = sanitize_spaces(text)
         lines = text.split('\n')
         cleaned_lines = []
         for line in lines:
@@ -883,7 +894,7 @@ else:
         tabs = st.tabs(["📋 제안요청서 분석 결과", "🔍 유사연구"])
 
         with tabs[0]:
-            project_name = st.session_state.analysis_results.get("project_name", "미지정 사업")
+            project_name = sanitize_spaces(st.session_state.analysis_results.get("project_name", "미지정 사업"))
             st.header(f"📋 제안요청서 분석 결과 [{project_name}]")
             analysis_text = st.session_state.analysis_results.get("main_analysis", "")
             st.markdown(analysis_text, unsafe_allow_html=True)
