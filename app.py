@@ -7,7 +7,7 @@ from collections import Counter
 import re
 import os
 from kiwipiepy import Kiwi
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import datetime
@@ -132,9 +132,9 @@ with st.sidebar:
     
     # Settings
     st.markdown("---")
-    api_key = st.secrets.get("groq", {}).get("api_key", "")
+    api_key = st.secrets.get("gemini", {}).get("api_key", "")
     if not api_key:
-        api_key = os.environ.get("GROQ_API_KEY", "")
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
     
     st.markdown("---")
     st.markdown("**Developed by ㅈㅅㅎ**")
@@ -303,8 +303,8 @@ if start_analysis:
             st.code(full_current_text[:1000] + "...")
 
     try:
-        MODEL_NAME = "llama-3.3-70b-versatile"
-        llm = ChatGroq(temperature=0.0, model=MODEL_NAME, api_key=api_key)
+        MODEL_NAME = "gemini-1.5-pro"
+        llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
         has_prev = bool(prev_text.strip())
 
