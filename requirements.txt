@@ -11,5 +11,4 @@ bcrypt
 gspread
 google-auth
 python-docx
-langchain-groq
 

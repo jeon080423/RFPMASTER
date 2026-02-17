@@ -6,7 +6,7 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_groq import ChatGroq
+from langchain_core.output_parsers import StrOutputParser
 import datetime
 import time
 import google.generativeai as genai
@@ -131,11 +131,7 @@ with st.sidebar:
                     "gemini-2.0-pro-exp-02-05", 
                     "gemini-2.0-flash", 
                     "gemini-1.5-pro", 
-                    "gemini-1.5-flash", 
-                    "groq-openai-gpt-oss-120b",
-                    "groq-llama-4-preview",
-                    "groq-llama-3.3-70b",
-                    "groq-qwen3-32b"
+                    "gemini-1.5-flash"
                 ]
                 
                 # Model selection for the Admin themselves
@@ -240,10 +236,7 @@ with st.sidebar:
         api_keys.append(os.environ.get("GOOGLE_API_KEY"))
     
     # Current primary key for simple usage
-    api_key = api_keys[0] if api_keys else ""
-    
-    # Groq API Key
-    groq_api_key = st.secrets.get("groq", {}).get("api_key", os.environ.get("GROQ_API_KEY", ""))
+    api_keys = [v for k, v in st.secrets.items() if k.startswith("gemini_key_")]
     
     st.markdown("---")
     st.markdown("**Developed by ㅈㅅㅎ**")
@@ -474,52 +467,17 @@ def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
 # -----------------------------------------------------------------------------
 is_exhausted, reset_time = auth.check_quota_status()
 if is_exhausted:
-    st.warning(f"⚠️ **금일 모든 분석 API 쿼터가 소진되었습니다.**\n\n모든 예비 엔진(Gemini, Groq)의 일일 할당량이 모두 사용되었습니다. 다음 초기화 시간(**{reset_time} KST**) 이후에 다시 분석이 가능합니다.")
+    st.warning(f"⚠️ **금일 모든 분석 API 쿼터가 소진되었습니다.**\n\n모든 제미나이(Gemini) API 키의 일일 할당량이 소진되었습니다. 다음 초기화 시간(**{reset_time} KST**) 이후에 다시 분석이 가능합니다.")
 
 st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션</div>', unsafe_allow_html=True)
 
-# Rate limit retry helper with Key Rotation & Groq Fallback
-def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_flash=False, model_name=None):
-    """Invoke LLM chain with Gemini keys (once each) and then Groq fallback."""
+# Rate limit retry helper with Key Rotation
+def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_name=None):
+    """Invoke LLM chain with Gemini keys (once each) and rotate on failure."""
     if not api_keys:
         raise Exception("API Key가 설정되지 않았습니다.")
     
-    # --- Try Groq FIRST if explicitly selected ---
-    if model_name and model_name.startswith("groq-") and groq_api_key:
-        try:
-            groq_model = model_name.replace("groq-", "")
-            mapping = {
-                "openai-gpt-oss-120b": "openai/gpt-oss-120b",
-                "llama-4-preview": "meta-llama/llama-4-maverick-17b-128e-instruct",
-                "llama-3.3-70b": "llama-3.3-70b-versatile",
-                "qwen3-32b": "qwen/qwen3-32b",
-                "deepseek-r1-70b": "llama-3.3-70b-versatile",
-                "llama-3.1-70b": "llama-3.3-70b-versatile",
-                "gemma2-9b": "llama-3.3-70b-versatile"
-            }
-            actual_groq_model = mapping.get(groq_model, groq_model)
-            
-            # Final safety block
-            if any(dec in actual_groq_model for dec in ["llama-3.1", "gemma2", "deepseek-r1-distill-llama"]):
-                actual_groq_model = "llama-3.3-70b-versatile"
-            
-            llm = ChatGroq(temperature=0.0, model_name=actual_groq_model, groq_api_key=groq_api_key)
-            chain = prompt_template | llm | StrOutputParser()
-            return chain.invoke(params)
-        except Exception as groq_err:
-            error_msg = str(groq_err).lower()
-            # If hit TPM/RPM limit or 413 error (too large), try the "Versatile" (high-limit) model instead
-            if "rate_limit" in error_msg or "413" in error_msg or "tpm" in error_msg or "too large" in error_msg:
-                if actual_groq_model != "llama-3.3-70b-versatile":
-                    st.info(f"🔄 선택하신 모델의 처리 용량(TPM) 초과로 인해, 대용량 처리가 가능한 Llama 3.3 엔진으로 자동 전환하여 분석을 계속합니다.")
-                    try:
-                        llm = ChatGroq(temperature=0.0, model_name="llama-3.3-70b-versatile", groq_api_key=groq_api_key)
-                        return (prompt_template | llm | StrOutputParser()).invoke(params)
-                    except: pass
-            
-            st.warning(f"🔄 Groq 엔진 호출 지연으로 인해 제미나이로 전환하여 분석을 완료합니다.")
-
     # Try each Gemini key exactly once
     for i, key in enumerate(api_keys):
         try:
@@ -540,30 +498,9 @@ def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_
             else:
                 raise e
                 
-    # --- Final Fallback to Groq (Using high-quality production models) ---
-    if groq_api_key:
-        try:
-            st.info("💡 모든 제미나이 한도가 초과되어 고성능 Groq 엔진(Llama-3.3-70b)으로 전환하여 분석을 마무리합니다.")
-            llm = ChatGroq(
-                temperature=0.0, 
-                model_name="llama-3.3-70b-versatile", 
-                groq_api_key=groq_api_key
-            )
-            chain = prompt_template | llm | StrOutputParser()
-            return chain.invoke(params)
-        except Exception as groq_err:
-            st.error(f"❌ Groq(DeepSeek-R1) 엔진 호출 실패: {groq_err}")
-            
-            # Last resort: Try Llama 3.3 if DeepSeek also fails
-            try:
-                llm = ChatGroq(temperature=0.0, model_name="llama-3.3-70b-versatile", groq_api_key=groq_api_key)
-                chain = prompt_template | llm | StrOutputParser()
-                return chain.invoke(params)
-            except: pass
-
     # If we reach here, everything failed.
     auth.record_quota_exhaustion()
-    raise Exception("모든 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM) 또는 일일 한도(RPD)에 도달했을 때 발생합니다. 약 1분 후 다시 시도하거나 오후 5시 초기화 이후 이용해 주세요.")
+    raise Exception("모든 제미나이 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM) 또는 일일 한도(RPD)에 도달했을 때 발생합니다. 약 1분 후 다시 시도하거나 오후 5시 초기화 이후 이용해 주세요.")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
 
@@ -825,7 +762,7 @@ else:
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
             
             with st.spinner(f"[{project_name}] 전문가 모드 정밀 분석 중..."):
-                response = invoke_with_retry(prompt, {"text": user_content}, api_keys, groq_api_key=groq_api_key, model_name=MODEL_NAME)
+                response = invoke_with_retry(prompt, {"text": user_content}, api_keys, model_name=MODEL_NAME)
                 
                 # Extract AI-detected project name (fallback)
                 ai_name_match = re.search(r'\[PROJECT_NAME:\s*(.*?)\]', response)
@@ -864,7 +801,7 @@ else:
 4. 표 형식으로만 출력하세요 (| 연도 | 논문/보고서명 | 저자명 | 저자 소속기관 | 보고서 발간 기간 |).
 5. 실제 존재하는 연구 데이터만 기반으로 작성하세요.
 """)
-                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, groq_api_key=groq_api_key, use_flash=False, model_name=MODEL_NAME)
+                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, use_flash=False, model_name=MODEL_NAME)
                     st.session_state.analysis_results["similar_research"] = clean_ai_output(research_result)
                 except Exception as e:
                     st.session_state.analysis_results["similar_research"] = f"유사연구 검색 중 오류 발생: {e}"

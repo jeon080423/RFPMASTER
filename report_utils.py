@@ -7,10 +7,32 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
+def sanitize_xml(text):
+    """
+    Removes characters that are not allowed in XML 1.0.
+    Invalid characters include most control codes and null bytes.
+    """
+    if not text: return ""
+    
+    # Valid XML characters: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    def is_xml_compatible(ch):
+        codepoint = ord(ch)
+        return (
+            codepoint == 0x9 or      # Tab
+            codepoint == 0xA or      # Newline
+            codepoint == 0xD or      # Carriage Return
+            (0x20 <= codepoint <= 0xD7FF) or
+            (0xE000 <= codepoint <= 0xFFFD) or
+            (0x10000 <= codepoint <= 0x10FFFF)
+        )
+    
+    return "".join(ch for ch in text if is_xml_compatible(ch))
+
 def clean_markdown(text):
     """
     Simples markdown cleaner for Word.
     Removes bold/italic markers but keeps the text.
+    Also sanitizes for XML compatibility.
     """
     if not text: return ""
     # Strip <br> tags
@@ -18,7 +40,9 @@ def clean_markdown(text):
     # Remove bold/italic ** or *
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
-    return text
+    
+    # Finally sanitize for XML
+    return sanitize_xml(text)
 
 def add_page_number(run):
     """Inserts an automatic page number field into a run."""
@@ -42,6 +66,8 @@ def generate_word_report(results, project_name="미지정 사업"):
     Generates a Word document from the analysis results.
     results: dict { "Section Name": "Content Text", ... }
     """
+    # Sanitize project name
+    project_name = sanitize_xml(project_name)
     doc = Document()
     
     # Set Narrow Margins and Add Page Numbers to Footer (Bottom Center)
