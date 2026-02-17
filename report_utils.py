@@ -41,7 +41,11 @@ def generate_word_report(results):
     
     style = doc.styles['Normal']
     style.font.name = 'Malgun Gothic'
+    style.font.size = Pt(10)
     style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
+    # Add paragraph spacing
+    from docx.shared import Pt
+    style.paragraph_format.space_after = Pt(6)
     
     for heading in ['Heading 1', 'Heading 2', 'Heading 3']:
         style = doc.styles[heading]
@@ -144,6 +148,7 @@ def _process_markdown_table(doc, lines):
                     p.style = doc.styles['Normal']
                     for run in p.runs:
                         run.font.name = 'Malgun Gothic'
+                        run.font.size = Pt(9) # Slightly smaller for tables
                         run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
                         if r == 0: # Header Bold
                             run.font.bold = True

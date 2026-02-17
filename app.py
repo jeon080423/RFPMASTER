@@ -329,8 +329,8 @@ with col1:
 
 with col2:
     st.subheader("2. 직전 연도 공고 자료 (선택)")
-    no_prev_rfp = st.checkbox("직전 제안요청서 없음", key="chk_no_prev_rfp")
-    prev_rfp = st.file_uploader("직전 년도 제안요청서 또는 과업지시서", type=["pdf"], disabled=no_prev_rfp, key="prev_rfp")
+    no_prev_rfp = st.checkbox("직전 제안요청서 또는 과업지시서 없음", value=False)
+    prev_rfp = st.file_uploader("직전 년도 제안요청서 (PDF)", type=["pdf"], disabled=no_prev_rfp)
 
 # --- Conditional: Show analysis button only for logged-in & approved users ---
 is_logged_in = st.session_state.user is not None
@@ -356,6 +356,12 @@ else:
             return match.group(0)
         return default_label
 
+    def clean_ai_output(text):
+        """Forcefully removes <br> tags and replacements with \n."""
+        if not text: return ""
+        cleaned = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+        return cleaned
+
     if start_analysis:
         if not api_key:
             st.error("분석을 시작하려면 API Key 설정이 필요합니다.")
@@ -380,7 +386,7 @@ else:
 
         # Detect Years
         curr_year = detect_year(full_current_text, "금년")
-        prev_year = detect_year(prev_text, "직전") if prev_text else "없음"
+        prev_year = detect_year(prev_text, "직전") if prev_text else "직전"
 
         # --- Diagnostics for user ---
         curr_len = len(full_current_text.strip())
@@ -402,30 +408,10 @@ else:
             st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
             llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
-            has_prev = bool(prev_text.strip())
-
-            # Stricter Sys Prompt with new rules
-            sys_prompt = f"""
-# Role Definition
-당신은 공공기관 입찰 전략 컨설턴트이자 20년 경력의 수석 리서치 연구원입니다. 
-당신의 임무는 절대적으로 제공된 [금년도 문서]의 텍스트를 기반으로 분석을 수행하는 것입니다.
-
-# [CRITICAL RULE] NO HALLUCINATIONS
-1. **절대로** 문서에 없는 정보를 지어내지 마세요.
-2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
-
-# [FORMATTING RULE] CONCISE TONE & LINE BREAKS
-- 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
-- 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
-- 웹 시인성을 위해 표 내부의 긴 문장은 가급적 불릿(`-`)을 사용하여 줄바꿈을 유도하세요.
-
-# [CITATION RULE]
-- **섹션 1 (표)**: 표 내부에는 **출처(페이지, 제목 등)를 절대 표기하지 마세요.** 오직 분석 내용만 담으세요.
-- **섹션 2, 3, 4, 5**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p), (p.24)). 제목은 생략하세요.
-
-# Analysis Instructions
-아래 5가지 섹션에 맞춰 분석 결과를 출력하세요.
-
+            # Skip Section 1 prompt if no_prev_rfp is True
+            section_1_prompt = ""
+            if not no_prev_rfp:
+                section_1_prompt = f"""
 ## 1. 제안요청서 핵심 비교 및 전략 (RFP Analysis)
 *금년도({curr_year})와 직전 연도({prev_year}) 정보를 비교하되, 직전 자료가 없으면 '정보 없음'으로 표기하세요.*
 
@@ -441,12 +427,35 @@ else:
 | **품질 및 검증 관리** | | | |
 | **필수 인력 요건** | | | |
 | **성과품 및 활용** | | | |
+"""
+
+            sys_prompt = f"""
+# Role Definition
+당신은 공공기관 입찰 전략 컨설턴트이자 20년 경력의 수석 리서치 연구원입니다. 
+당신의 임무는 절대적으로 제공된 [금년도 문서]의 텍스트를 기반으로 분석을 수행하는 것입니다.
+
+# [CRITICAL RULE] NO HALLUCINATIONS
+1. **절대로** 문서에 없는 정보를 지어내지 마세요.
+2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
+
+# [FORMATTING RULE] CONCISE TONE & LINE BREAKS
+- 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
+- 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
+- 웹 시인성을 위해 표 내부의 긴 문장은 가급적 불릿(`-`)을 사용하여 줄바꿈을 유도하세요.
+
+# [CITATION RULE]
+- **섹션 1 (표)**: 표 내부에는 **출처(페이지, 제목 등)를 절대 표기하지 마세요.**
+- **섹션 2, 3, 4, 5**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p)).
+
+# Analysis Instructions
+아래 섹션에 맞춰 분석 결과를 출력하세요.
+{section_1_prompt}
 
 ## 2. 배점표 기반 승부처 분석 (Scoring Strategy)
 **배점이 높거나 중요한 요건 3가지를 명사형으로 기술하고 출처 페이지를 표기하세요.**
 
 ## 3. 과업 내용 기반 필수 수행 체크리스트 (Must-Do List)
-**과업지시서상 필수 수행 과업을 추출하고 출처 페이지를 표기하세요.**
+**과업지시서상 필수 수행 과업을 추출하세요. [중요] 반드시 제안요청서의 '목차' 순서에 맞추어 재배치하여 제시하세요. 목차가 명확하지 않을 경우 일반적인 제안서 구성(사업이해-추진전략-수행계획-관리계획) 순서로 배치하세요.**
 
 ## 4. 행정 서류 및 제안서 규격 체크리스트 (Administrative Check)
 **제출 서류 및 규격을 정리하고 출처 페이지를 표기하세요.**
@@ -456,15 +465,11 @@ else:
 """
             # Use a balanced slice of the text
             def get_balanced_context(text, max_chars=30000):
-                if len(text) <= max_chars:
-                    return text
+                if len(text) <= max_chars: return text
                 half = max_chars // 2
                 return text[:half] + "\n\n... (중략) ...\n\n" + text[-half:]
 
-            current_context = get_balanced_context(full_current_text, 30000)
-            prev_context = get_balanced_context(prev_text, 10000) if prev_text else "없음"
-            
-            user_content = f"[금년도 문서]\n{current_context}\n\n[직전 연도 문서]\n{prev_context}"
+            user_content = f"[금년도 문서]\n{get_balanced_context(full_current_text, 30000)}\n\n[직전 연도 문서]\n{get_balanced_context(prev_text, 10000) if prev_text else '없음'}"
             
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
             chain = prompt | llm | StrOutputParser()
@@ -472,9 +477,10 @@ else:
             # Run consolidated analysis
             with st.spinner("전문가 모드로 제안요청서를 정밀 분석 중입니다..."):
                 response = invoke_with_retry(chain, {"text": user_content})
-                # Store keywords in results too
+                # Clean Output aggressively
+                cleaned_response = clean_ai_output(response)
                 st.session_state.analysis_results["top_keywords"] = top_keywords
-                st.session_state.analysis_results["main_analysis"] = response
+                st.session_state.analysis_results["main_analysis"] = cleaned_response
 
         except Exception as e:
             st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
@@ -538,7 +544,8 @@ else:
             file_name="win_strategy_report.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             type="primary",
-            use_container_width=True
+            use_container_width=True,
+            key="final_dw_btn"
         )
 
 st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
