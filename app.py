@@ -303,6 +303,7 @@ if start_analysis:
             st.code(full_current_text[:1000] + "...")
 
     try:
+        # Use a more robust model name to avoid 404 errors
         MODEL_NAME = "gemini-1.5-pro"
         llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
@@ -432,4 +433,4 @@ if start_analysis:
     except Exception as e:
         st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
 
-st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Groq Llama3</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini 1.5 Pro</div>', unsafe_allow_html=True)
