@@ -144,8 +144,8 @@ def _process_markdown_table(doc, lines):
                 # Clear existing paragraphs in cell and add new ones based on \n
                 cell._element.clear_content() # Quick way to clear
                 
-                # Split by newline and add as paragraphs
-                lines_in_cell = cleaned_text.split('\n')
+                # Split by newline or semicolon and add as paragraphs
+                lines_in_cell = re.split(r'\n|; ', cleaned_text)
                 for i, line_content in enumerate(lines_in_cell):
                     p = cell.add_paragraph(line_content)
                     p.style = doc.styles['Normal']

@@ -503,7 +503,18 @@ else:
                 # Outside table: replace <br> with \n
                 cleaned_line = re.sub(r'<br\s*/?>', '\n', line, flags=re.IGNORECASE)
                 cleaned_lines.append(cleaned_line)
-        return '\n'.join(cleaned_lines)
+        
+        # Final step for UI: Convert '; ' back to '<br>' for rendering inside tables
+        result = '\n'.join(cleaned_lines)
+        if '|' in result:
+            final_lines = []
+            for line in result.split('\n'):
+                if '|' in line:
+                    final_lines.append(line.replace('; ', '<br>'))
+                else:
+                    final_lines.append(line)
+            return '\n'.join(final_lines)
+        return result
 
     if start_analysis:
         if not api_key:
@@ -550,11 +561,14 @@ else:
             has_prev = bool(prev_text.strip())
             
             # Section 1 ALWAYS appears now. AI handles empty prev info.
+            col1_header = "이번 회차"
+            col2_header = "직전 회차" if prev_text.strip() else "직전 자료 없음"
+            
             section_1_prompt = f"""
 ## 1. 제안요청서 핵심 비교 및 전략 (RFP Analysis)
-*금년도({curr_year})와 직전 연도({prev_year}) 정보를 비교하세요. 직전 연도 정보가 '없음'인 경우 해당 칸은 '정보 없음'으로 기입하고 금년도 내용을 중점적으로 분석하세요.*
+*금년도와 직전 정보를 비교분석하세요. 직전 정보가 없는 경우 해당 칸은 '정보 없음'으로 기입하세요.*
 
-| 구분 | {curr_year} 요구사항 | {prev_year} 요구사항 | 변경 내용 및 전략적 해설 |
+| 구분 | {col1_header} | {col2_header} | 변경 내용 및 전략적 해설 |
 | :-- | :--- | :--- | :--- |
 | **사업 예산 및 기간** | | | |
 | **모집단** | | | |
@@ -584,8 +598,8 @@ else:
 
 # [CITATION RULE]
 - **페이지 인식**: 텍스트 내의 `[Page N]` 표시가 해당 페이지의 시작을 의미합니다. 이를 기반으로 정확한 페이지 번호를 추출하세요.
-- **섹션 1 (표)**: 표 내부에는 **출처(페이지, 제목 등)를 절대 표기하지 마세요.**
-- **섹션 2, 3, 4, 5**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p)).
+- **섹션 1, 2, 3, 4, 5, 6 (표)**: 표 내부의 셀에 **출처를 중복해서 표기하지 마세요.** 표에는 전용 '출처' 열이 있는 경우 그곳에만 표기하세요. (예: 섹션 3의 '상세 수행 내용' 칸에는 출처를 적지 마세요.)
+- **일반 텍스트**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p)).
 
 # Analysis Instructions
 아래 섹션에 맞춰 분석 결과를 출력하세요.
@@ -603,7 +617,7 @@ else:
 ## 3. 과업 내용 기반 필수 수행 체크리스트 (Must-Do List)
 **과업지시서상 필수 수행 과업을 추출하여 아래 표 형식으로 정리하세요. [중요] 반드시 제안요청서의 '목차' 순서에 맞추어 재배치하고, 상세 수행 내용은 세미콜론(; )으로 연결하여 시인성을 높이세요.**
 
-| 순서 | 필수 과업 내용 | 상세 수행 내용 (줄바꿈 대신 ; 사용) | 출처 |
+| 순서 | 필수 과업 내용 | 상세 수행 내용 | 출처 |
 | :--- | :--- | :--- | :--- |
 | | | | |
 
