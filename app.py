@@ -9,6 +9,7 @@ from langchain_core.output_parsers import StrOutputParser
 import datetime
 import time
 import google.generativeai as genai
+import traceback
 import auth
 import email_utils
 
@@ -701,7 +702,10 @@ else:
             st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data, project_name=project_name)
 
         except Exception as e:
-            st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
+            st.error(f"AI 분석 중 오류가 발생했습니다: {type(e).__name__}: {e}")
+            with st.expander("🛠️ 상세 오류 정보 (디버깅용)"):
+                st.code(traceback.format_exc())
+            
             # Diagnostic for 404
             if "NOT_FOUND" in str(e) or "not found" in str(e).lower():
                 with st.expander("🛠️ API 모델 접근 진단"):
