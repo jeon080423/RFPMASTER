@@ -303,8 +303,8 @@ if start_analysis:
             st.code(full_current_text[:1000] + "...")
 
     try:
-        # Switching to gemini-1.5-flash for better compatibility and to resolve 404 NOT_FOUND
-        MODEL_NAME = "gemini-1.5-flash"
+        # Reverting to gemini-1.5-pro as requested by user
+        MODEL_NAME = "gemini-1.5-pro"
         llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
         has_prev = bool(prev_text.strip())
@@ -433,4 +433,4 @@ if start_analysis:
     except Exception as e:
         st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
 
-st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini 1.5 Flash</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini 1.5 Pro</div>', unsafe_allow_html=True)
