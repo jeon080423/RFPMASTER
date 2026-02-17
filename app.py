@@ -117,6 +117,16 @@ with st.sidebar:
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
             else:
                 st.info("등록된 사용자 없음")
+
+            st.markdown("---")
+            with st.expander("🛠️ 관리자 설정", expanded=True):
+                model_options = ["자동 최적화 (권장)", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+                st.selectbox(
+                    "분석 모델 강제 지정", 
+                    options=model_options, 
+                    key="admin_selected_model",
+                    help="관리자만 설정 가능합니다. 일반 사용자는 최적화 로직이 적용됩니다."
+                )
     else:
         # --- Not logged-in state ---
         st.markdown('<div class="sidebar-login-header">🔐 로그인</div>', unsafe_allow_html=True)
@@ -531,7 +541,7 @@ else:
         return result
 
     if start_analysis:
-        if not api_key:
+        if not api_keys: # Changed from api_key to api_keys
             st.error("분석을 시작하려면 API Key 설정이 필요합니다.")
             st.stop()
         if not current_rfp:
@@ -566,10 +576,20 @@ else:
             prev_msg = f" & 직전 연도 {prev_len}자" if prev_len > 0 else ""
             st.success(f"✅ 텍스트 추출 완료! (금년도 {curr_len}자{prev_msg})")
 
-        try:
+        # 1. Resolve Model
+        admin_model = st.session_state.get("admin_selected_model")
+        is_manual = admin_model and admin_model != "자동 최적화 (권장)"
+        
+        if is_manual:
+            MODEL_NAME = admin_model
+            model_display = f"{MODEL_NAME} (사용자 지정)"
+        else:
             MODEL_NAME = get_best_available_model(api_key)
-            st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
+            model_display = f"{MODEL_NAME} (자동 최적화)"
+        
+        st.info(f"✨ 분석 모델: `{model_display}`")
 
+        try:
             has_prev = bool(prev_text.strip())
             
             # Section 1 ALWAYS appears now. AI handles empty prev info.
