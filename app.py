@@ -341,9 +341,17 @@ def extract_text_from_pdf(uploaded_file):
 
 def get_best_available_model(api_key):
     """Dynamically find the best available model (Pro first) for the given API key."""
+    if "model_cache" not in st.session_state:
+        st.session_state.model_cache = {}
+        
     try:
-        genai.configure(api_key=api_key)
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # Check cache first to save quota calls
+        if api_key in st.session_state.model_cache:
+            available_models = st.session_state.model_cache[api_key]
+        else:
+            genai.configure(api_key=api_key)
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            st.session_state.model_cache[api_key] = available_models
         
         priority = [
             "models/gemini-2.5-pro",
@@ -367,9 +375,17 @@ def get_best_available_model(api_key):
 
 def get_flash_model(api_key):
     """Dynamically find the fastest/cheapest available model (Flash first)."""
+    if "model_cache" not in st.session_state:
+        st.session_state.model_cache = {}
+
     try:
-        genai.configure(api_key=api_key)
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # Check cache first to save quota calls
+        if api_key in st.session_state.model_cache:
+            available_models = st.session_state.model_cache[api_key]
+        else:
+            genai.configure(api_key=api_key)
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            st.session_state.model_cache[api_key] = available_models
         
         # Priority: Flash 2.5 -> Flash 2.0 -> Flash 1.5
         priority = [
@@ -384,8 +400,6 @@ def get_flash_model(api_key):
             if p in available_models:
                 return p.split("/")[-1]
     except: pass
-    return "gemini-1.5-flash"
-
     return "gemini-1.5-flash"
 
 def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
@@ -435,11 +449,11 @@ def invoke_with_retry(prompt_template, params, api_keys, max_retries=3, use_flas
             if 'rate_limit' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
                 # Switch to next key
                 current_key_idx = (current_key_idx + 1) % total_keys
-                st.warning(f"🔄 API 한도 초과로 인해 {current_key_idx + 1}번 키로 전환하여 재시도합니다... (시도 {attempt+1})")
-                time.sleep(2) # Short pause before switching
+                st.warning(f"🔄 API 한도 초과 발생. {current_key_idx + 1}번 키로 전환하며 10초간 대기합니다... (시도 {attempt+1})")
+                time.sleep(10) # Increased delay to allow quota reset
             else:
                 raise e
-    raise Exception("모든 API 키의 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요.")
+    raise Exception("모든 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM)에 도달했을 때 발생합니다. 약 1분 후 다시 시도해주세요.")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
 
