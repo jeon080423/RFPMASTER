@@ -5,6 +5,7 @@ from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 def clean_markdown(text):
     """
@@ -21,22 +22,19 @@ def clean_markdown(text):
 
 def add_page_number(run):
     """Inserts an automatic page number field into a run."""
-    fldChar = qn('w:fldChar')
-    instrText = qn('w:instrText')
-    
     # Beginning of field
-    fld_start = docx.oxml.shared.OxmlElement(fldChar)
-    fld_start.set(fldChar, 'begin')
+    fld_start = OxmlElement('w:fldChar')
+    fld_start.set(qn('w:fldChar'), 'begin')
     run._element.append(fld_start)
     
     # Field instruction (PAGE)
-    instr_text = docx.oxml.shared.OxmlElement(instrText)
+    instr_text = OxmlElement('w:instrText')
     instr_text.text = "PAGE"
     run._element.append(instr_text)
     
     # End of field
-    fld_end = docx.oxml.shared.OxmlElement(fldChar)
-    fld_end.set(fldChar, 'end')
+    fld_end = OxmlElement('w:fldChar')
+    fld_end.set(qn('w:fldChar'), 'end')
     run._element.append(fld_end)
 
 def generate_word_report(results, project_name="미지정 사업"):
