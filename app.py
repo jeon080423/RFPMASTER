@@ -321,7 +321,8 @@ if start_analysis:
                 relevant_text = get_relevant_context(context_text, keywords)
                 with st.spinner(f"{tab_name} 분석 중..."):
                     try:
-                        time.sleep(10)
+                        time.sleep(3)
+                        # st.toast("API 호출 준비 중... (잠시 대기)", icon="⏳")
                         sys_prompt = (
                             "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
                             "다음 규칙을 반드시 준수하세요:\n"
@@ -358,7 +359,8 @@ if start_analysis:
                 # 1. Current Analysis (Senior Researcher Persona, List Format)
                 with st.spinner(f"{tab_name} - 금년도 핵심 요건 분석 중..."):
                     try:
-                        time.sleep(10)
+                        time.sleep(3)
+                        # st.toast("API 호출 준비 중... (잠시 대기)", icon="⏳")
                         # New Persona and Goal from User Request
                         sys_prompt = (
                             "당신은 공공기관 및 정부 부처의 조사·연구 용역 제안서를 작성하는 수석 연구원(Senior Researcher)입니다.\n"
@@ -389,7 +391,7 @@ if start_analysis:
                     relevant_prev = get_relevant_context(previous_text, keywords)
                     with st.spinner(f"{tab_name} - 직전 연도 대비 비교 분석 중..."):
                         try:
-                            time.sleep(15)
+                            time.sleep(5)
                             compare_prompt = ChatPromptTemplate.from_template(
                                 "당신은 공공기관 입찰 전문 분석가입니다.\n"
                                 "아래 [직전 연도]와 [금년도] 문서를 비교하여 변경사항을 분석하세요.\n\n"
@@ -422,7 +424,8 @@ if start_analysis:
                 # 1. Current Task Analysis
                 with st.spinner(f"{tab_name} - 금년도 과업 분석 중..."):
                     try:
-                        time.sleep(10)
+                        time.sleep(3)
+                        # st.toast("API 호출 준비 중... (잠시 대기)", icon="⏳")
                         sys_prompt = (
                             "당신은 공공기관 과업지시서 전문 분석가입니다.\n"
                             "제안서 작성에 필수적인 과업 수행 요건을 아래 기준에 맞춰 추출하세요.\n\n"
@@ -445,7 +448,7 @@ if start_analysis:
                     relevant_prev = get_relevant_context(previous_text, keywords)
                     with st.spinner(f"{tab_name} - 과업지시서 비교 분석 중..."):
                         try:
-                            time.sleep(15)
+                            time.sleep(5)
                             compare_prompt = ChatPromptTemplate.from_template(
                                 "당신은 과업지시서 비교 분석 전문가입니다.\n"
                                 "아래 [직전 과업지시서]와 [금년도 과업지시서]를 비교하여,\n"
@@ -500,7 +503,7 @@ if start_analysis:
                 except Exception as e:
                     st.error(f"키워드 분석 중 오류: {e}")
         
-        time.sleep(5)
+        time.sleep(2)
 
         # =====================================================================
         # Tab 2: 조사/분석 설계 (Categories 1 & 3 & 5)
