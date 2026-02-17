@@ -495,13 +495,22 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
         except Exception as e:
             error_str = str(e).lower()
             
-            # Handle 404 Not Found by falling back to a guaranteed stable ID
+            # Handle 404 Not Found by falling back to guaranteed stable IDs
             if "not found" in error_str or "404" in error_str:
-                if actual_model != "gemini-1.5-flash-latest":
-                    try:
-                        llm = ChatGoogleGenerativeAI(temperature=0.0, model="gemini-1.5-flash-latest", google_api_key=key)
-                        return (prompt_template | llm | StrOutputParser()).invoke(params)
-                    except: pass
+                # Sequence of safe fallbacks (trying both with and without models/ prefix)
+                safe_fallbacks = [
+                    "gemini-1.5-flash-latest", "models/gemini-1.5-flash-latest",
+                    "gemini-1.5-pro-latest", "models/gemini-1.5-pro-latest",
+                    "gemini-1.5-flash", "models/gemini-1.5-flash"
+                ]
+                for fallback_model in safe_fallbacks:
+                    if actual_model != fallback_model:
+                        try:
+                            llm = ChatGoogleGenerativeAI(temperature=0.0, model=fallback_model, google_api_key=key)
+                            return (prompt_template | llm | StrOutputParser()).invoke(params)
+                        except Exception as inner_e:
+                            if "not found" not in str(inner_e).lower() and "404" not in str(inner_e).lower():
+                                break # If it's not a 404, it might be a rate limit, let the outer loop handle it
 
             if 'rate_limit' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
                 # [Smart Downgrade] If hit 429 while using 2.x models, force fallback to stable 1.5 Flash for next keys
