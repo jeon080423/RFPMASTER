@@ -11,6 +11,7 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import datetime
+import time
 import auth
 import email_utils
 
@@ -202,7 +203,8 @@ def create_word_chart(keywords):
     ax.set_title('상위 20개 핵심 키워드')
     return fig
 
-def get_relevant_context(text, keywords, box_size=6000, max_len=25000):
+def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
+    """Extracts relevant text chunks around keywords. Sizes reduced for Groq TPM limit."""
     relevant_chunks = []
     text_lower = text.lower()
     for kw in keywords:
@@ -210,7 +212,7 @@ def get_relevant_context(text, keywords, box_size=6000, max_len=25000):
         while True:
             idx = text_lower.find(kw, start_idx)
             if idx == -1: break
-            start = max(0, idx - 1500)
+            start = max(0, idx - 500)
             end = min(len(text), idx + box_size)
             chunk = text[start:end]
             relevant_chunks.append(chunk)
@@ -225,6 +227,21 @@ def get_relevant_context(text, keywords, box_size=6000, max_len=25000):
 # -----------------------------------------------------------------------------
 st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션</div>', unsafe_allow_html=True)
+
+# Rate limit retry helper
+def invoke_with_retry(chain, params, max_retries=3):
+    """Invoke LLM chain with retry on rate limit errors."""
+    for attempt in range(max_retries):
+        try:
+            return chain.invoke(params)
+        except Exception as e:
+            error_str = str(e)
+            if 'rate_limit' in error_str.lower() or '413' in error_str or '429' in error_str:
+                wait_time = 15 * (attempt + 1)
+                time.sleep(wait_time)
+            else:
+                raise e
+    raise Exception("API 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요.")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
 
@@ -301,22 +318,28 @@ if start_analysis:
             chart = create_word_chart(top_keywords)
             if chart: st.pyplot(chart)
             with st.spinner("핵심 키워드 기반 사업 요약 중..."):
-                prompt = ChatPromptTemplate.from_template(
-                    "당신은 공공기관 입찰 전문가입니다. "
-                    "아래 제안요청서의 상위 핵심 키워드를 분석하여 다음을 마크다운 표로 정리하세요:\n\n"
-                    "| 구분 | 내용 |\n|---|---|\n"
-                    "| 사업명(추정) | ... |\n"
-                    "| 발주 기관(추정) | ... |\n"
-                    "| 핵심 주제 | 1~2문장 요약 |\n"
-                    "| 주요 키워드 군집 | 관련 키워드 그룹핑 |\n"
-                    "| 사업 유형 | 연구용역/시스템개발/조사사업 등 |\n\n"
-                    "반드시 한국어로만 작성하세요. 키워드: {keywords}"
-                )
-                chain = prompt | llm | StrOutputParser()
-                insight = chain.invoke({"keywords": str(top_keywords)})
-                insight = insight.replace("<br>", " ").replace("<br/>", " ")
-                st.markdown(insight)
-                st.session_state.analysis_results["키워드 인사이트"] = f"Top Keywords: {str(top_keywords)}\n\n{insight}"
+                try:
+                    prompt = ChatPromptTemplate.from_template(
+                        "당신은 공공기관 입찰 전문가입니다. "
+                        "아래 제안요청서의 상위 핵심 키워드를 분석하여 다음을 마크다운 표로 정리하세요.\n\n"
+                        "| 구분 | 내용 |\n|---|---|\n"
+                        "| 사업명(추정) | ... |\n"
+                        "| 발주 기관(추정) | ... |\n"
+                        "| 핵심 주제 | 1~2문장 요약 |\n"
+                        "| 주요 키워드 군집 | 관련 키워드 그룹핑 |\n"
+                        "| 사업 유형 | 연구용역/시스템개발/조사사업 등 |\n\n"
+                        "표 외에 다른 형식(불릿, 번호 목록 등)은 절대 사용하지 마세요. "
+                        "반드시 한국어로만 작성하세요. 키워드: {keywords}"
+                    )
+                    chain = prompt | llm | StrOutputParser()
+                    insight = invoke_with_retry(chain, {"keywords": str(top_keywords)})
+                    insight = insight.replace("<br>", " ").replace("<br/>", " ")
+                    st.markdown(insight)
+                    st.session_state.analysis_results["키워드 인사이트"] = f"Top Keywords: {str(top_keywords)}\n\n{insight}"
+                except Exception as e:
+                    st.error(f"키워드 분석 중 오류: {e}")
+
+        time.sleep(5)  # Delay to avoid TPM rate limit
 
         # =====================================================================
         # Tab 2: Previous Document Comparison
@@ -328,29 +351,32 @@ if start_analysis:
                 st.session_state.analysis_results["직전 제안요청서 비교"] = "비교 데이터 없음"
             else:
                 with st.spinner("직전 연도와 비교 분석 중..."):
-                    prompt = ChatPromptTemplate.from_template(
-                        "당신은 공공기관 입찰 전문가입니다. "
-                        "아래의 [직전 연도]와 [금년도] 제안요청서를 비교하여, "
-                        "변경된 사항만을 아래 마크다운 표 형식으로 정리하세요.\n\n"
-                        "| 비교 항목 | 직전 연도 | 금년도 | 변경 내용 요약 |\n"
-                        "|---|---|---|---|\n"
-                        "| 사업 예산 | | | |\n"
-                        "| 사업 기간 | | | |\n"
-                        "| 표본 규모 | | | |\n"
-                        "| 조사 방법론 | | | |\n"
-                        "| 평가 기준/배점 | | | |\n"
-                        "| 참가 자격 요건 | | | |\n"
-                        "| 납품 성과물 | | | |\n"
-                        "| 기타 주요 변경 | | | |\n\n"
-                        "문서에 명시되지 않은 항목은 '명시 없음'으로 표기하세요. "
-                        "반드시 한국어로만 작성하세요.\n\n"
-                        "[직전 연도]\n{prev_text}\n\n[금년도]\n{curr_text}"
-                    )
-                    chain = prompt | llm | StrOutputParser()
-                    res = chain.invoke({"prev_text": prev_text[:5000], "curr_text": full_current_text[:5000]})
-                    res = res.replace("<br>", " ").replace("<br/>", " ")
-                    st.markdown(res)
-                    st.session_state.analysis_results["직전 제안요청서 비교"] = res
+                    try:
+                        prompt = ChatPromptTemplate.from_template(
+                            "당신은 공공기관 입찰 전문가입니다. "
+                            "아래의 [직전 연도]와 [금년도] 제안요청서를 비교 분석하세요.\n\n"
+                            "**반드시 아래 마크다운 표 형식만 사용하세요. 표 외에 불릿 목록이나 텍스트 설명은 절대 추가하지 마세요.**\n\n"
+                            "| 비교 항목 | 직전 연도 | 금년도 | 변경 내용 요약 |\n"
+                            "|---|---|---|---|\n"
+                            "| 사업 예산 | | | |\n"
+                            "| 사업 기간 | | | |\n"
+                            "| 표본 규모 | | | |\n"
+                            "| 조사 방법론 | | | |\n"
+                            "| 평가 기준/배점 | | | |\n"
+                            "| 참가 자격 요건 | | | |\n"
+                            "| 납품 성과물 | | | |\n"
+                            "| 기타 주요 변경 | | | |\n\n"
+                            "문서에 명시되지 않은 항목은 '명시 없음'. "
+                            "반드시 한국어로만 작성.\n\n"
+                            "[직전 연도]\n{prev_text}\n\n[금년도]\n{curr_text}"
+                        )
+                        chain = prompt | llm | StrOutputParser()
+                        res = invoke_with_retry(chain, {"prev_text": prev_text[:3000], "curr_text": full_current_text[:3000]})
+                        res = res.replace("<br>", " ").replace("<br/>", " ")
+                        st.markdown(res)
+                        st.session_state.analysis_results["직전 제안요청서 비교"] = res
+                    except Exception as e:
+                        st.error(f"비교 분석 중 오류: {e}")
 
         # =====================================================================
         # Tab 3~8: Structured RFP Analysis
@@ -360,24 +386,28 @@ if start_analysis:
                 st.header(tab_name)
                 relevant_text = get_relevant_context(context_text, keywords)
                 with st.spinner(f"{tab_name} 분석 중..."):
-                    sys_prompt = (
-                        "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
-                        "다음 규칙을 반드시 준수하세요:\n"
-                        "1. 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요.\n"
-                        "2. 문서에 명시되지 않은 도구, 기술, 방법론, 의견은 절대로 추가하지 마세요.\n"
-                        "3. 내용이 없으면 '해당 내용 없음'으로 표기하세요.\n"
-                        "4. 반드시 마크다운 표(table) 형식으로 구조화하여 출력하세요.\n"
-                        "5. HTML 태그(<br> 등)를 사용하지 말고 마크다운만 사용하세요.\n"
-                        "6. 반드시 자연스러운 '한국어'로만 작성하세요.\n"
-                        "7. 영어, 중국어, 일본어, 아랍어가 절대 포함되지 않게 하세요.\n\n"
-                        f"[분석 지시사항]\n{instructions}"
-                    )
-                    prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
-                    chain = prompt | llm | StrOutputParser()
-                    response = chain.invoke({"text": relevant_text})
-                    response = response.replace("<br>", " ").replace("<br/>", " ")
-                    st.markdown(response)
-                    st.session_state.analysis_results[tab_name] = response
+                    try:
+                        time.sleep(10)  # Delay between calls to avoid TPM rate limit
+                        sys_prompt = (
+                            "당신은 공공기관 입찰 및 제안요청서(RFP) 전문 분석가입니다.\n"
+                            "다음 규칙을 반드시 준수하세요:\n"
+                            "1. 문서에 있는 '사실(Fact)'만을 추출하여 정리하세요.\n"
+                            "2. 문서에 명시되지 않은 도구, 기술, 방법론, 의견은 절대로 추가하지 마세요.\n"
+                            "3. 내용이 없으면 '해당 내용 없음'으로 표기하세요.\n"
+                            "4. 반드시 마크다운 표(table) 형식만 사용하세요. 표 외에 불릿 목록이나 텍스트 설명은 추가하지 마세요.\n"
+                            "5. HTML 태그를 사용하지 말고 마크다운만 사용하세요.\n"
+                            "6. 반드시 자연스러운 '한국어'로만 작성하세요.\n"
+                            "7. 영어, 중국어, 일본어, 아랍어가 절대 포함되지 않게 하세요.\n\n"
+                            f"[분석 지시사항]\n{instructions}"
+                        )
+                        prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
+                        chain = prompt | llm | StrOutputParser()
+                        response = invoke_with_retry(chain, {"text": relevant_text})
+                        response = response.replace("<br>", " ").replace("<br/>", " ")
+                        st.markdown(response)
+                        st.session_state.analysis_results[tab_name] = response
+                    except Exception as e:
+                        st.error(f"{tab_name} 분석 중 오류가 발생했습니다: {e}")
 
         # --- Tab 3: 조사설계 ---
         run_analysis(
