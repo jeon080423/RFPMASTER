@@ -500,8 +500,7 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                 # Sequence of safe fallbacks (trying both with and without models/ prefix)
                 safe_fallbacks = [
                     "gemini-1.5-flash-latest", "models/gemini-1.5-flash-latest",
-                    "gemini-1.5-pro-latest", "models/gemini-1.5-pro-latest",
-                    "gemini-1.5-flash", "models/gemini-1.5-flash"
+                    "gemini-1.5-pro-latest", "models/gemini-1.5-pro-latest"
                 ]
                 for fallback_model in safe_fallbacks:
                     if actual_model != fallback_model:
@@ -509,16 +508,20 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                             llm = ChatGoogleGenerativeAI(temperature=0.0, model=fallback_model, google_api_key=key)
                             return (prompt_template | llm | StrOutputParser()).invoke(params)
                         except Exception as inner_e:
-                            if "not found" not in str(inner_e).lower() and "404" not in str(inner_e).lower():
-                                break # If it's not a 404, it might be a rate limit, let the outer loop handle it
-
-            if 'rate_limit' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
-                # [Smart Downgrade] If hit 429 while using 2.x models, force fallback to stable 1.5 Flash for next keys
-                if "gemini-2." in actual_model:
-                    st.info(f"🔄 **제미나이 2.x 한도 초과**: 안정적인 분석을 위해 다음 키부터는 처리 한도가 넉넉한 1.5 Flash 엔진으로 자동 전환합니다.")
-                    model_name = "gemini-1.5-flash-latest" 
-                
-                st.warning(f"🔄 제미나이 {i + 1}번 키 한도 초과. 다음 키로 즉시 전환합니다.")
+                            inner_msg = str(inner_e).lower()
+                            if "not found" not in inner_msg and "404" not in inner_msg:
+                                break 
+                                
+            # Define skipable errors that should trigger rotation to NEXT key
+            skipable_errors = [
+                'rate_limit', '429', 'resource_exhausted', # Limits
+                '404', 'not found',                        # Missing model/endpoint
+                '401', 'unauthorized',                     # Invalid key
+                '403', 'forbidden', 'permission'           # Permission issue
+            ]
+            
+            if any(err in error_str for err in skipable_errors):
+                st.warning(f"🔄 제미나이 {i + 1}번 키 오류 ({error_str[:100]}...). 다음 키로 전환합니다.")
                 continue # Try the next key in the list
             else:
                 raise e
