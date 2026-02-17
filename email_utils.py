@@ -101,3 +101,47 @@ def send_admin_notification(new_user_email, new_user_name):
         
     except Exception as e:
         return False, f"관리자 알림 전송 실패: {e}"
+
+def send_password_reset_email(to_email, new_password):
+    """
+    Sends a new temporary password to the user.
+    """
+    try:
+        smtp_secrets = st.secrets["smtp"]
+        sender_email = smtp_secrets["email_sender"]
+        password = smtp_secrets["email_password"]
+        
+        subject = "[수주비책] 임시 비밀번호 안내"
+        body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif;">
+            <div style="background-color: #fce7f3; padding: 20px;">
+                <h2 style="color: #be185d;">수주비책 비밀번호 초기화</h2>
+                <p>안녕하세요.</p>
+                <p>요청하신 비밀번호 초기화가 완료되었습니다.</p>
+                <div style="background-color: #ffffff; padding: 15px; border-radius: 5px; border: 1px solid #f9a8d4; text-align: center; margin: 20px 0;">
+                    <p style="margin: 0; font-size: 14px; color: #6b7280;">임시 비밀번호</p>
+                    <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #db2777; letter-spacing: 2px;">{new_password}</p>
+                </div>
+                <p>로그인 후 반드시 비밀번호를 변경하시기 바랍니다.</p>
+                <hr>
+                <p style="font-size: 12px; color: #6b7280;">보안을 위해 임시 비밀번호를 타인에게 노출하지 마세요.</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'html'))
+        
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(sender_email, password)
+            server.send_message(msg)
+            
+        return True, "비밀번호 안내 메일 전송 성공"
+    except Exception as e:
+        return False, f"메일 전송 실패: {e}"

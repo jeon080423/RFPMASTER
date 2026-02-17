@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 import bcrypt
 from google.oauth2.service_account import Credentials
+from datetime import datetime
 
 # Google Sheets Configuration
 SHEET_NAME = "RFP MASTER"
@@ -47,13 +48,20 @@ def init_db():
     # Check header
     current_data = sheet.get_all_values()
     
+    # Standards: email, password, name, approved, role, last_login, analysis_count
+    cols = ["email", "password", "name", "approved", "role", "last_login", "analysis_count"]
+    
     if not current_data:
-         sheet.append_row(["email", "password", "name", "approved", "role"])
+         sheet.append_row(cols)
     else:
-        # Check if first row contains 'email'
+        # Check if first row contains all columns
         first_row = [str(cell).strip().lower() for cell in current_data[0]]
-        if "email" not in first_row:
-             sheet.insert_row(["email", "password", "name", "approved", "role"], index=1)
+        for col in cols:
+            if col not in first_row:
+                # Add missing column to the end
+                idx = len(first_row) + 1
+                sheet.update_cell(1, idx, col)
+                first_row.append(col)
 
 
 def get_all_users():
@@ -74,7 +82,7 @@ def get_all_users():
         df = pd.DataFrame(rows, columns=headers)
         
         # Ensure required columns exist
-        required_cols = ["email", "password", "name", "approved", "role"]
+        required_cols = ["email", "password", "name", "approved", "role", "last_login", "analysis_count"]
         for col in required_cols:
             if col not in df.columns:
                 df[col] = "" # Add missing column
@@ -82,7 +90,7 @@ def get_all_users():
         return df
     except Exception as e:
         # st.error(f"데이터 조회 실패: {e}")
-        return pd.DataFrame(columns=["email", "password", "name", "approved", "role"])
+        return pd.DataFrame(columns=["email", "password", "name", "approved", "role", "last_login", "analysis_count"])
 
 def create_user(email, password, name):
     """Creates a new user in Google Sheets."""
@@ -110,8 +118,8 @@ def create_user(email, password, name):
     except Exception:
         pass # If secrets are not set, no default admin
         
-    # Append row
-    sheet.append_row([email, hashed_pw, name, approved, role])
+    # Append row: last_login is empty, analysis_count is 0
+    sheet.append_row([email, hashed_pw, name, approved, role, "", 0])
     return True
 
 def login_user(email, password):
@@ -124,10 +132,22 @@ def login_user(email, password):
         user_data = user_row.iloc[0]
         stored_pw = user_data['password']
         if bcrypt.checkpw(password.encode('utf-8'), stored_pw.encode('utf-8')):
+            # Update last login time
+            try:
+                client = get_connection()
+                sheet = client.open(SHEET_NAME).sheet1
+                cell = sheet.find(email)
+                if cell:
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # Column 6 is last_login
+                    sheet.update_cell(cell.row, 6, now)
+            except:
+                pass
+                
             return {
                 "email": user_data['email'], 
                 "name": user_data['name'], 
-                "approved": bool(user_data['approved']), # Ensure boolean
+                "approved": bool(user_data['approved']),
                 "role": user_data['role']
             }
     return None
@@ -178,3 +198,59 @@ def approve_user(email):
             sheet.update_cell(cell.row, 4, 1) # Set approved to 1
     except Exception as e:
         st.error(f"승인 처리 중 오류: {e}")
+
+def update_password(email, new_password):
+    """Updates a user's password with a new one (hashed)."""
+    hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    try:
+        client = get_connection()
+        sheet = client.open(SHEET_NAME).sheet1
+        cell = sheet.find(email)
+        if cell:
+            # Column 2 is password
+            sheet.update_cell(cell.row, 2, hashed_pw)
+            return True
+    except Exception as e:
+        st.error(f"비밀번호 변경 실패: {e}")
+    return False
+
+def increment_analysis_count(email):
+    """Increments the analysis_count for a specific user."""
+    try:
+        client = get_connection()
+        sheet = client.open(SHEET_NAME).sheet1
+        cell = sheet.find(email)
+        if cell:
+            users = get_all_users()
+            user_data = users[users['email'] == email].iloc[0]
+            try:
+                current_count = int(user_data.get('analysis_count', 0))
+            except:
+                current_count = 0
+            # Column 7 is analysis_count
+            sheet.update_cell(cell.row, 7, current_count + 1)
+    except:
+        pass
+
+def reset_password(email):
+    """Generates a new random password, updates the DB, and returns it."""
+    import secrets
+    import string
+    
+    # Generate random password
+    alphabet = string.ascii_letters + string.digits
+    new_password = ''.join(secrets.choice(alphabet) for i in range(10))
+    hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    try:
+        client = get_connection()
+        sheet = client.open(SHEET_NAME).sheet1
+        cell = sheet.find(email)
+        if cell:
+            # Column 2 is password
+            sheet.update_cell(cell.row, 2, hashed_pw)
+            return new_password
+    except Exception as e:
+        st.error(f"비밀번호 초기화 실패: {e}")
+    
+    return None

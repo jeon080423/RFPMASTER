@@ -1,7 +1,7 @@
 
 import io
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import re
 
@@ -11,6 +11,8 @@ def clean_markdown(text):
     Removes bold/italic markers but keeps the text.
     """
     if not text: return ""
+    # Strip <br> tags
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
     # Remove bold/italic ** or *
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
@@ -23,6 +25,13 @@ def generate_word_report(results):
     """
     doc = Document()
     
+    # Set Narrow Margins (0.5 inch / 1.27 cm)
+    for section in doc.sections:
+        section.top_margin = Cm(1.27)
+        section.bottom_margin = Cm(1.27)
+        section.left_margin = Cm(1.27)
+        section.right_margin = Cm(1.27)
+
     # Title
     title = doc.add_heading('수주비책 (Win Strategy) 분석 보고서', 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -123,12 +132,17 @@ def _process_markdown_table(doc, lines):
         for c, text in enumerate(cells):
             if c < cols:
                 cell = table.cell(r, c)
-                cell.text = clean_markdown(text)
+                cleaned_text = clean_markdown(text)
                 
-                # Apply Font to Table Cells
-                for paragraph in cell.paragraphs:
-                    paragraph.style = doc.styles['Normal']
-                    for run in paragraph.runs:
+                # Clear existing paragraphs in cell and add new ones based on \n
+                cell._element.clear_content() # Quick way to clear
+                
+                # Split by newline and add as paragraphs
+                lines_in_cell = cleaned_text.split('\n')
+                for i, line_content in enumerate(lines_in_cell):
+                    p = cell.add_paragraph(line_content)
+                    p.style = doc.styles['Normal']
+                    for run in p.runs:
                         run.font.name = 'Malgun Gothic'
                         run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
                         if r == 0: # Header Bold
