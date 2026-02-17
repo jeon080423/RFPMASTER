@@ -215,6 +215,15 @@ def extract_text_from_pdf(uploaded_file):
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
+        
+        # --- Token Saving Cleanup ---
+        # Remove redundant newlines (3 or more -> 2)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        # Remove redundant spaces (2 or more -> 1)
+        text = re.sub(r' +', ' ', text)
+        # Remove leading/trailing whitespace per line
+        text = '\n'.join([line.strip() for line in text.split('\n')])
+        
     except Exception as e:
         return f"Error reading PDF: {e}"
     return mask_pii(text)
@@ -229,19 +238,17 @@ def analyze_keywords(text):
     return count.most_common(20)
 
 def get_best_available_model(api_key):
-    """Dynamically find the best available model for the given API key."""
+    """Dynamically find the best available model (Pro first) for the given API key."""
     try:
         genai.configure(api_key=api_key)
-        # Fetch available models
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # Priority list
         priority = [
             "models/gemini-1.5-pro",
             "models/gemini-1.5-pro-latest",
-            "models/gemini-2.0-flash-exp", # 2.0 experimental if available
+            "models/gemini-2.0-flash-exp",
             "models/gemini-1.5-flash",
-            "models/gemini-pro" # legacy
+            "models/gemini-pro"
         ]
         
         for p in priority:
@@ -250,10 +257,28 @@ def get_best_available_model(api_key):
         
         if available_models:
             return available_models[0].split("/")[-1]
-    except Exception as e:
-        print(f"Model listing error: {e}")
-    
-    return "gemini-1.5-flash" # Safe fallback
+    except: pass
+    return "gemini-1.5-flash"
+
+def get_flash_model(api_key):
+    """Dynamically find the fastest/cheapest available model (Flash first)."""
+    try:
+        genai.configure(api_key=api_key)
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Priority: Flash 1.5 -> Flash 2.0 -> Pro 1.5
+        priority = [
+            "models/gemini-1.5-flash",
+            "models/gemini-1.5-flash-latest",
+            "models/gemini-2.0-flash-exp",
+            "models/gemini-1.5-pro"
+        ]
+        
+        for p in priority:
+            if p in available_models:
+                return p.split("/")[-1]
+    except: pass
+    return "gemini-1.5-flash"
 
 def create_word_chart(keywords):
     if not keywords: return None
@@ -316,7 +341,7 @@ st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe
 st.markdown('<div class="sub-header">공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션</div>', unsafe_allow_html=True)
 
 # Rate limit retry helper with Key Rotation
-def invoke_with_retry(prompt_template, params, api_keys, max_retries=3):
+def invoke_with_retry(prompt_template, params, api_keys, max_retries=3, use_flash=False):
     """Invoke LLM chain with retry and API key rotation on rate limit errors."""
     if not api_keys:
         raise Exception("API Key가 설정되지 않았습니다.")
@@ -328,7 +353,7 @@ def invoke_with_retry(prompt_template, params, api_keys, max_retries=3):
         key = api_keys[current_key_idx]
         try:
             # Re-initialize model/chain with the current key
-            model_name = get_best_available_model(key)
+            model_name = get_flash_model(key) if use_flash else get_best_available_model(key)
             llm = ChatGoogleGenerativeAI(temperature=0.0, model=model_name, google_api_key=key)
             chain = prompt_template | llm | StrOutputParser()
             return chain.invoke(params)
@@ -352,9 +377,9 @@ with col1:
     current_rfp = st.file_uploader("올해 제안요청서 또는 과업지시서", type=["pdf"], key="curr_rfp")
 
 with col2:
-    st.subheader("2. 직전 연도 공고 자료 (선택)")
+    st.subheader("2. 직전 회차 공고 자료 (선택)")
     st.markdown("<div style='margin-bottom: 28px;'></div>", unsafe_allow_html=True)
-    prev_rfp = st.file_uploader("직전 년도 제안요청서 또는 과업지시서", type=["pdf"], key="prev_rfp_uploader")
+    prev_rfp = st.file_uploader("직전 회차 제안요청서 또는 과업지시서", type=["pdf"], key="prev_rfp_uploader")
 
 # --- Conditional: Show analysis button only for logged-in & approved users ---
 is_logged_in = st.session_state.user is not None
@@ -502,13 +527,13 @@ else:
 | **차별화 요소** | | |
 | **핵심 제언** | | |
 """
-            # Use a balanced slice of the text
-            def get_balanced_context(text, max_chars=30000):
+            # Use a balanced slice of the text (Optimized for tokens)
+            def get_balanced_context(text, max_chars=20000):
                 if len(text) <= max_chars: return text
                 half = max_chars // 2
                 return text[:half] + "\n\n... (중략) ...\n\n" + text[-half:]
 
-            user_content = f"[금년도 문서]\n{get_balanced_context(full_current_text, 30000)}\n\n[직전 연도 문서]\n{get_balanced_context(prev_text, 10000) if prev_text else '없음'}"
+            user_content = f"[금년도 문서]\n{get_balanced_context(full_current_text, 20000)}\n\n[직전 회차 문서]\n{get_balanced_context(prev_text, 8000) if prev_text else '없음'}"
             
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
             
@@ -565,7 +590,10 @@ else:
                         prompt_k = ChatPromptTemplate.from_template(
                             "당신은 공공기관 입찰 전문가입니다. 상위 키워드를 분석하여 표로 정리하세요. 키워드: {keywords}"
                         )
-                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(prompt_k, {"keywords": str(keywords)}, api_keys)
+                        # Use FLASH for secondary task to save tokens/quota
+                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(
+                            prompt_k, {"keywords": str(keywords)}, api_keys, use_flash=True
+                        )
                     
                     st.markdown(st.session_state.analysis_results["keyword_summary"])
                     

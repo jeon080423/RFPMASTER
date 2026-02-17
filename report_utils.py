@@ -1,9 +1,9 @@
-
 import io
+import re
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import re
+from docx.oxml.ns import qn
 
 def clean_markdown(text):
     """
@@ -37,14 +37,11 @@ def generate_word_report(results):
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     # Set Korean Font Style
-    from docx.oxml.ns import qn
-    
     style = doc.styles['Normal']
     style.font.name = 'Malgun Gothic'
     style.font.size = Pt(10)
     style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
     # Add paragraph spacing
-    from docx.shared import Pt
     style.paragraph_format.space_after = Pt(6)
     
     for heading in ['Heading 1', 'Heading 2', 'Heading 3']:
@@ -112,7 +109,6 @@ def _process_markdown_table(doc, lines):
     """
     Parses a markdown table buffer and adds a Word table.
     """
-    from docx.oxml.ns import qn
     
     # Filter out divider lines (e.g., |---|---|)
     data_rows = [line for line in lines if not set(line.replace('|', '').strip()) <= set('-: ')]
