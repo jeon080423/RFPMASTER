@@ -173,11 +173,22 @@ with st.sidebar:
                     else:
                         st.error("이미 가입된 이메일입니다.")
     
-    # Settings
+    # Settings (Multi-key support)
     st.markdown("---")
-    api_key = st.secrets.get("gemini", {}).get("api_key", "")
-    if not api_key:
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
+    sec_gemini = st.secrets.get("gemini", {})
+    api_keys = []
+    # Collect all available keys: api_key, api_key2, api_key3...
+    if sec_gemini.get("api_key"): api_keys.append(sec_gemini.get("api_key"))
+    for i in range(2, 6):
+        k = sec_gemini.get(f"api_key{i}")
+        if k: api_keys.append(k)
+    
+    # Fallback to env if empty
+    if not api_keys and os.environ.get("GOOGLE_API_KEY"):
+        api_keys.append(os.environ.get("GOOGLE_API_KEY"))
+    
+    # Current primary key for simple usage
+    api_key = api_keys[0] if api_keys else ""
     
     st.markdown("---")
     st.markdown("**Developed by ㅈㅅㅎ**")
@@ -304,20 +315,33 @@ def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
 st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션</div>', unsafe_allow_html=True)
 
-# Rate limit retry helper
-def invoke_with_retry(chain, params, max_retries=3):
-    """Invoke LLM chain with retry on rate limit errors."""
-    for attempt in range(max_retries):
+# Rate limit retry helper with Key Rotation
+def invoke_with_retry(prompt_template, params, api_keys, max_retries=3):
+    """Invoke LLM chain with retry and API key rotation on rate limit errors."""
+    if not api_keys:
+        raise Exception("API Key가 설정되지 않았습니다.")
+    
+    current_key_idx = 0
+    total_keys = len(api_keys)
+    
+    for attempt in range(max_retries * total_keys):
+        key = api_keys[current_key_idx]
         try:
+            # Re-initialize model/chain with the current key
+            model_name = get_best_available_model(key)
+            llm = ChatGoogleGenerativeAI(temperature=0.0, model=model_name, google_api_key=key)
+            chain = prompt_template | llm | StrOutputParser()
             return chain.invoke(params)
         except Exception as e:
-            error_str = str(e)
-            if 'rate_limit' in error_str.lower() or '413' in error_str or '429' in error_str:
-                wait_time = 15 * (attempt + 1)
-                time.sleep(wait_time)
+            error_str = str(e).lower()
+            if 'rate_limit' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
+                # Switch to next key
+                current_key_idx = (current_key_idx + 1) % total_keys
+                st.warning(f"🔄 API 한도 초과로 인해 {current_key_idx + 1}번 키로 전환하여 재시도합니다... (시도 {attempt+1})")
+                time.sleep(2) # Short pause before switching
             else:
                 raise e
-    raise Exception("API 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요.")
+    raise Exception("모든 API 키의 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요.")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
 
@@ -357,10 +381,23 @@ else:
         return default_label
 
     def clean_ai_output(text):
-        """Forcefully removes <br> tags and replacements with \n."""
+        """
+        Forcefully removes <br> tags. 
+        Replaces with \n generally, but with '; ' if inside a table line to prevent row breakage.
+        """
         if not text: return ""
-        cleaned = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
-        return cleaned
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            if '|' in line:
+                # Inside table row: replace <br> with ; to keep it on one line
+                cleaned_line = re.sub(r'<br\s*/?>', '; ', line, flags=re.IGNORECASE)
+                cleaned_lines.append(cleaned_line)
+            else:
+                # Outside table: replace <br> with \n
+                cleaned_line = re.sub(r'<br\s*/?>', '\n', line, flags=re.IGNORECASE)
+                cleaned_lines.append(cleaned_line)
+        return '\n'.join(cleaned_lines)
 
     if start_analysis:
         if not api_key:
@@ -403,7 +440,6 @@ else:
         try:
             MODEL_NAME = get_best_available_model(api_key)
             st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
-            llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
             has_prev = bool(prev_text.strip())
             
@@ -434,7 +470,7 @@ else:
 # [CRITICAL RULE] NO HALLUCINATIONS & TABLE STABILITY
 1. **절대로** 문서에 없는 정보를 지어내지 마세요.
 2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
-3. **[표(Table) 작성 규칙]**: 모든 표(Section 1, 4, 5) 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 쉼표(`,`) 또는 세미콜론(`;`)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요.
+3. **[표(Table) 작성 규칙]**: 모든 표(Section 1, 4, 5) 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 쉼표(`,`) 또는 세미콜론(`;`)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요. 표 작성 시 반드시 헤더 구분을 위한 구분선(`| :--- | :--- |`)을 생략하지 마세요.
 
 # [FORMATTING RULE] CONCISE TONE & LINE BREAKS
 - 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
@@ -475,11 +511,10 @@ else:
             user_content = f"[금년도 문서]\n{get_balanced_context(full_current_text, 30000)}\n\n[직전 연도 문서]\n{get_balanced_context(prev_text, 10000) if prev_text else '없음'}"
             
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
-            chain = prompt | llm | StrOutputParser()
             
-            # Run consolidated analysis
+            # Run consolidated analysis with Multi-Key Rotation
             with st.spinner("전문가 모드로 제안요청서를 정밀 분석 중입니다..."):
-                response = invoke_with_retry(chain, {"text": user_content})
+                response = invoke_with_retry(prompt, {"text": user_content}, api_keys)
                 # Clean Output aggressively
                 cleaned_response = clean_ai_output(response)
                 st.session_state.analysis_results["top_keywords"] = top_keywords
@@ -527,18 +562,15 @@ else:
             with st.spinner("핵심 키워드 기반 사업 요약 중..."):
                 try:
                     if "keyword_summary" not in st.session_state.analysis_results:
-                        MODEL_NAME = get_best_available_model(api_key)
-                        llm_k = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
                         prompt_k = ChatPromptTemplate.from_template(
                             "당신은 공공기관 입찰 전문가입니다. 상위 키워드를 분석하여 표로 정리하세요. 키워드: {keywords}"
                         )
-                        chain_k = prompt_k | llm_k | StrOutputParser()
-                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(chain_k, {"keywords": str(keywords)})
+                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(prompt_k, {"keywords": str(keywords)}, api_keys)
                     
                     st.markdown(st.session_state.analysis_results["keyword_summary"])
                     
                     # Update Docx with keyword summary if not already included
-                    if st.session_state.analysis_results.get("docx_file"):
+                    if "docx_file" in st.session_state.analysis_results:
                         import report_utils
                         report_data = {
                             "제안요청서 분석 결과": st.session_state.analysis_results.get("main_analysis", ""),

@@ -131,12 +131,19 @@ def _process_markdown_table(doc, lines):
     table.style = 'Table Grid'
     
     for r, row_text in enumerate(data_rows):
-        cells = [c.strip() for c in row_text.strip('|').split('|')]
+        # Improved row splitting: handle leading/trailing pipes and varying whitespace
+        row_content = row_text.strip()
+        if row_content.startswith('|'): row_content = row_content[1:]
+        if row_content.endswith('|'): row_content = row_content[:-1]
+        
+        cells = [c.strip() for c in row_content.split('|')]
+        
         # Handle mismatch in columns (basic protection)
         for c, text in enumerate(cells):
             if c < cols:
                 cell = table.cell(r, c)
                 cleaned_text = clean_markdown(text)
+                cell.text = cleaned_text
                 
                 # Clear existing paragraphs in cell and add new ones based on \n
                 cell._element.clear_content() # Quick way to clear
