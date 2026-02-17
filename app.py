@@ -124,7 +124,19 @@ with st.sidebar:
 
             st.markdown("---")
             with st.expander("🛠️ 관리자 설정", expanded=True):
-                model_options = ["자동 최적화 (권장)", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "groq-deepseek-r1-70b", "groq-llama-3.3-70b", "groq-gemma2-9b"]
+                # Cleaned up model options: removing 2.5 (beta/exp) and old versions if necessary
+                # Keeping stable and high-perf models
+                model_options = [
+                    "자동 최적화 (권장)", 
+                    "gemini-2.0-pro-exp-02-05", 
+                    "gemini-2.0-flash", 
+                    "gemini-1.5-pro", 
+                    "gemini-1.5-flash", 
+                    "groq-openai-gpt-oss-120b",
+                    "groq-llama-4-preview",
+                    "groq-llama-3.3-70b",
+                    "groq-qwen3-32b"
+                ]
                 
                 # Model selection for the Admin themselves
                 st.selectbox(
@@ -477,13 +489,23 @@ def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_
     if model_name and model_name.startswith("groq-") and groq_api_key:
         try:
             groq_model = model_name.replace("groq-", "")
-            # Mapping short IDs to actual Groq model strings
+            # Mapping short IDs and legacy IDs to actual current Groq model strings (verified Feb 2026)
             mapping = {
-                "deepseek-r1-70b": "deepseek-r1-distill-llama-70b",
+                "openai-gpt-oss-120b": "openai/gpt-oss-120b",
+                "llama-4-preview": "meta-llama/llama-4-maverick-17b-128e-instruct",
                 "llama-3.3-70b": "llama-3.3-70b-versatile",
-                "gemma2-9b": "gemma2-9b-it"
+                "qwen3-32b": "qwen/qwen3-32b",
+                # Legacy / Decommissioned redirects
+                "deepseek-r1-70b": "llama-3.3-70b-versatile",
+                "llama-3.1-70b": "llama-3.3-70b-versatile",
+                "gemma2-9b": "llama-3.3-70b-versatile"
             }
             actual_groq_model = mapping.get(groq_model, groq_model)
+            
+            # Final safety block for decommissioned strings
+            decommissioned_keywords = ["llama-3.1", "gemma2", "deepseek-r1-distill-llama"]
+            if any(dec in actual_groq_model for dec in decommissioned_keywords):
+                actual_groq_model = "llama-3.3-70b-versatile"
             
             llm = ChatGroq(
                 temperature=0.0, 
@@ -515,13 +537,13 @@ def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_
             else:
                 raise e
                 
-    # --- Final Fallback to Groq (Using DeepSeek-R1 for better quality) ---
+    # --- Final Fallback to Groq (Using high-quality production models) ---
     if groq_api_key:
         try:
-            st.info("💡 모든 제미나이 한도가 초과되어 고성능 추론 엔진 DeepSeek-R1(Groq)으로 전환하여 분석을 마무리합니다.")
+            st.info("💡 모든 제미나이 한도가 초과되어 고성능 Groq 엔진(Llama-3.3-70b)으로 전환하여 분석을 마무리합니다.")
             llm = ChatGroq(
                 temperature=0.0, 
-                model_name="deepseek-r1-distill-llama-70b", 
+                model_name="llama-3.3-70b-versatile", 
                 groq_api_key=groq_api_key
             )
             chain = prompt_template | llm | StrOutputParser()
