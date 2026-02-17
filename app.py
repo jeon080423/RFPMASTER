@@ -124,7 +124,7 @@ with st.sidebar:
 
             st.markdown("---")
             with st.expander("🛠️ 관리자 설정", expanded=True):
-                model_options = ["자동 최적화 (권장)", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+                model_options = ["자동 최적화 (권장)", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "groq-llama-3.3-70b"]
                 
                 # Model selection for the Admin themselves
                 st.selectbox(
@@ -457,43 +457,65 @@ def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
 # -----------------------------------------------------------------------------
 # 4. Main Content (Always visible)
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Global Quota Status Notification
+# -----------------------------------------------------------------------------
+is_exhausted, reset_time = auth.check_quota_status()
+if is_exhausted:
+    st.warning(f"⚠️ **금일 모든 분석 API 쿼터가 소진되었습니다.**\n\n모든 예비 엔진(Gemini, Groq)의 일일 할당량이 모두 사용되었습니다. 다음 초기화 시간(**{reset_time} KST**) 이후에 다시 분석이 가능합니다.")
+
 st.markdown('<div class="main-header">수주비책 (Win Strategy)</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션</div>', unsafe_allow_html=True)
 
 # Rate limit retry helper with Key Rotation & Groq Fallback
-def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, max_retries=3, use_flash=False):
-    """Invoke LLM chain with retry, API key rotation, and Groq fallback."""
+def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_flash=False, model_name=None):
+    """Invoke LLM chain with Gemini keys (once each) and then Groq fallback."""
     if not api_keys:
         raise Exception("API Key가 설정되지 않았습니다.")
     
-    current_key_idx = 0
-    total_keys = len(api_keys)
-    
-    for attempt in range(max_retries * total_keys):
-        key = api_keys[current_key_idx]
+    # --- Try Groq FIRST if explicitly selected ---
+    if model_name and model_name.startswith("groq-") and groq_api_key:
         try:
-            # Re-initialize model/chain with the current key
-            model_name = get_flash_model(key) if use_flash else get_best_available_model(key)
-            llm = ChatGoogleGenerativeAI(temperature=0.0, model=model_name, google_api_key=key)
+            groq_model = model_name.replace("groq-", "")
+            if groq_model == "llama-3.3-70b": groq_model = "llama-3.3-70b-versatile"
+            
+            llm = ChatGroq(
+                temperature=0.0, 
+                model_name=groq_model, 
+                groq_api_key=groq_api_key
+            )
+            chain = prompt_template | llm | StrOutputParser()
+            return chain.invoke(params)
+        except Exception as groq_err:
+            st.warning(f"🔄 Groq 우선 호출 실패 ({groq_err}). 제미나이로 전환합니다.")
+
+    # Try each Gemini key exactly once
+    for i, key in enumerate(api_keys):
+        try:
+            # If a specific Gemini model was requested, use it, otherwise detect best
+            if model_name and model_name.startswith("gemini-"):
+                actual_model = model_name
+            else:
+                actual_model = get_flash_model(key) if use_flash else get_best_available_model(key)
+                
+            llm = ChatGoogleGenerativeAI(temperature=0.0, model=actual_model, google_api_key=key)
             chain = prompt_template | llm | StrOutputParser()
             return chain.invoke(params)
         except Exception as e:
             error_str = str(e).lower()
             if 'rate_limit' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
-                # Switch to next key
-                current_key_idx = (current_key_idx + 1) % total_keys
-                st.warning(f"🔄 API 한도 초과 발생. {current_key_idx + 1}번 키로 즉시 전환하여 재시도합니다... (시도 {attempt+1})")
-                # Removed time.sleep() for instant rotation
+                st.warning(f"🔄 제미나이 {i + 1}번 키 한도 초과. 다음 키로 즉시 전환합니다.")
+                continue # Try the next key in the list
             else:
                 raise e
                 
     # --- Final Fallback to Groq ---
     if groq_api_key:
         try:
-            st.info("💡 모든 제미나이 한도가 초과되어 Groq 엔진(Llama-3.1-70b)으로 전환하여 분석을 완료합니다.")
+            st.info("💡 모든 제미나이 한도가 초과되어 Groq 엔진(Llama-3.3-70b)으로 전환하여 분석을 완료합니다.")
             llm = ChatGroq(
                 temperature=0.0, 
-                model_name="llama-3.1-70b-versatile", 
+                model_name="llama-3.3-70b-versatile", 
                 groq_api_key=groq_api_key
             )
             chain = prompt_template | llm | StrOutputParser()
@@ -501,7 +523,9 @@ def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, max_
         except Exception as groq_err:
             st.error(f"❌ Groq 엔진 호출 실패: {groq_err}")
 
-    raise Exception("모든 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM)에 도달했을 때 발생합니다. 약 1분 후 다시 시도해주세요.")
+    # If we reach here, everything failed.
+    auth.record_quota_exhaustion()
+    raise Exception("모든 API 키의 호출 한도를 초과했습니다. 이는 보통 프로젝트 단위의 분당 토큰 제한(TPM) 또는 일일 한도(RPD)에 도달했을 때 발생합니다. 약 1분 후 다시 시도하거나 오후 5시 초기화 이후 이용해 주세요.")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
 
@@ -763,7 +787,7 @@ else:
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
             
             with st.spinner(f"[{project_name}] 전문가 모드 정밀 분석 중..."):
-                response = invoke_with_retry(prompt, {"text": user_content}, api_keys, groq_api_key=groq_api_key)
+                response = invoke_with_retry(prompt, {"text": user_content}, api_keys, groq_api_key=groq_api_key, model_name=MODEL_NAME)
                 
                 # Extract AI-detected project name (fallback)
                 ai_name_match = re.search(r'\[PROJECT_NAME:\s*(.*?)\]', response)
@@ -802,7 +826,7 @@ else:
 4. 표 형식으로만 출력하세요 (| 연도 | 논문/보고서명 | 저자명 | 저자 소속기관 | 보고서 발간 기간 |).
 5. 실제 존재하는 연구 데이터만 기반으로 작성하세요.
 """)
-                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, groq_api_key=groq_api_key, use_flash=False)
+                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, groq_api_key=groq_api_key, use_flash=False, model_name=MODEL_NAME)
                     st.session_state.analysis_results["similar_research"] = clean_ai_output(research_result)
                 except Exception as e:
                     st.session_state.analysis_results["similar_research"] = f"유사연구 검색 중 오류 발생: {e}"

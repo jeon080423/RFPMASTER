@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 import bcrypt
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Google Sheets Configuration
 SHEET_NAME = "RFP MASTER"
@@ -77,17 +77,6 @@ def init_db():
     except Exception as e:
         st.error(f"데이터베이스 연결 초기화 실패: {e}")
 
-    # --- Initialize CONFIGS sheet ---
-    try:
-        sh = client.open(SHEET_NAME)
-        try:
-            config_sheet = sh.worksheet("CONFIGS")
-        except gspread.WorksheetNotFound:
-            config_sheet = sh.add_worksheet(title="CONFIGS", rows="100", cols="2")
-            config_sheet.append_row(["key", "value"])
-    except:
-        pass
-
 def get_global_setting(key, default=""):
     """Fetches a global setting from the CONFIGS sheet."""
     try:
@@ -115,6 +104,43 @@ def set_global_setting(key, value):
         return True
     except:
         return False
+
+def record_quota_exhaustion():
+    """Records the absolute timestamp of quota exhaustion in UTC."""
+    # Use datetime.now() if datetime is imported directly, or datetime.utcnow()
+    now_utc = datetime.utcnow().isoformat()
+    return set_global_setting("last_quota_exhaustion", now_utc)
+
+def check_quota_status():
+    """
+    Checks if the quota is currently exhausted.
+    Returns: (is_exhausted, next_reset_str)
+    Reset time is 17:00 KST (08:00 UTC).
+    """
+    last_exhaustion_str = get_global_setting("last_quota_exhaustion", "")
+    if not last_exhaustion_str:
+        return False, ""
+    
+    try:
+        last_ex = datetime.fromisoformat(last_exhaustion_str)
+        now = datetime.utcnow()
+        
+        # Reset window: 08:00 UTC (17:00 KST)
+        if now.hour < 8:
+            last_reset = now.replace(hour=8, minute=0, second=0, microsecond=0) - timedelta(days=1)
+            # Next reset is today at 17:00 KST
+            next_reset_kst_str = "오늘 오후 5:00"
+        else:
+            last_reset = now.replace(hour=8, minute=0, second=0, microsecond=0)
+            # Next reset is tomorrow at 17:00 KST
+            next_reset_kst_str = "내일 오후 5:00"
+
+        if last_ex > last_reset:
+            return True, next_reset_kst_str
+    except:
+        pass
+        
+    return False, ""
 
 
 @st.cache_data(ttl=60) # Cache user list for 1 minute to avoid hammering API
