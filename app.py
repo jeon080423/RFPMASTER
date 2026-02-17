@@ -192,7 +192,7 @@ with st.sidebar:
     <div style='font-size: 0.8rem; color: #666; background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px;'>
         <b>jeon080423@gmail.com</b><br>
         <b>후원:</b> 카뱅 3333-23-866708 ㅈㅅㅎ<br>
-        유료 API 결제 및 서버 유지비에 소중히 사용됩니다.
+        유료 API 결제 및 서버 유지비에 사용됩니다.
     </div>
     """, unsafe_allow_html=True)
 
@@ -433,14 +433,6 @@ else:
 # -----------------------------------------------------------------------------
 # 5. Analysis Logic (only for approved users)
 # -----------------------------------------------------------------------------
-    # --- Helper to detect year from text ---
-    def detect_year(text, default_label):
-        # Look for 4 digits followed by '년' in the first 2000 chars (usually cover/title)
-        match = re.search(r'20\d{2}년', text[:2000])
-        if match:
-            return match.group(0)
-        return default_label
-
     def detect_project_name(text):
         """Attempts to extract the project name from the first page of the RFP with robust regex."""
         if not text: return "미지정 사업"
@@ -475,6 +467,14 @@ else:
                 return line
         
         return "미지정 사업"
+
+    def detect_year(text, default_label):
+        """Attempts to detect the year from the text (e.g., '2024년')."""
+        if not text: return default_label
+        match = re.search(r'20\d{2}년', text[:3000])
+        if match:
+            return match.group(0)
+        return default_label
 
     def clean_ai_output(text):
         """
@@ -522,6 +522,7 @@ else:
         with st.spinner("문서를 분석 중입니다..."):
             full_current_text = extract_text_from_pdf(current_rfp)
             
+            prev_text = ""
             if prev_rfp:
                 prev_text = extract_text_from_pdf(prev_rfp)
 
@@ -632,10 +633,13 @@ else:
 """
             # Use a balanced slice of the text (Optimized for tokens)
             def get_balanced_context(text, max_chars=20000):
+                if not text: return ""
                 if len(text) <= max_chars: return text
                 half = max_chars // 2
                 return text[:half] + "\n\n... (중략) ...\n\n" + text[-half:]
 
+            user_content = f"[금년도 문서]\n{get_balanced_context(full_current_text, 20000)}\n\n[직전 회차 문서]\n{get_balanced_context(prev_text, 8000) if prev_text else '없음'}"
+            
             # Detect project name and store in session state
             project_name = detect_project_name(user_content)
             st.session_state.analysis_results["project_name"] = project_name
