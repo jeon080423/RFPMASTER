@@ -186,12 +186,16 @@ with st.sidebar:
     api_keys = []
     
     # Dynamically collect all keys starting with 'api_key'
-    if isinstance(sec_gemini, dict):
-        # Sort keys to maintain a consistent rotation order (api_key, api_key2, api_key3...)
+    try:
+        # Streamlit secrets might not be a literal dict, but should be iterable
         sorted_keys = sorted(sec_gemini.keys())
         for k in sorted_keys:
             if k.startswith("api_key") and sec_gemini[k]:
                 api_keys.append(sec_gemini[k])
+    except:
+        # Fallback for unexpected secrets structure
+        if sec_gemini.get("api_key"): 
+            api_keys.append(sec_gemini.get("api_key"))
     
     # Fallback to env if empty
     if not api_keys and os.environ.get("GOOGLE_API_KEY"):
