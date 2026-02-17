@@ -1,12 +1,5 @@
-
-import streamlit as st
-import pdfplumber
-import pandas as pd
-import matplotlib.pyplot as plt
-from collections import Counter
 import re
 import os
-from kiwipiepy import Kiwi
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -309,14 +302,10 @@ def extract_text_from_pdf(uploaded_file):
     except Exception as e:
         return f"Error reading PDF: {e}"
 
-def analyze_keywords(text):
-    kiwi = Kiwi()
-    tokens = kiwi.tokenize(text[:200000])
-    nouns = [token.form for token in tokens if token.tag.startswith('NN') and len(token.form) > 1]
-    stopwords = ['대한', '관련', '위해', '경우', '사항', '이상', '이하', '기타', '포함', '수행', '작성', '제출', '해당']
-    nouns = [n for n in nouns if n not in stopwords]
-    count = Counter(nouns)
-    return count.most_common(20)
+        return final_text
+        
+    except Exception as e:
+        return f"Error reading PDF: {e}"
 
 def get_best_available_model(api_key):
     """Dynamically find the best available model (Pro first) for the given API key."""
@@ -361,40 +350,7 @@ def get_flash_model(api_key):
     except: pass
     return "gemini-1.5-flash"
 
-def create_word_chart(keywords):
-    if not keywords: return None
-    words, counts = zip(*keywords)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    import platform
-    import matplotlib.font_manager as fm
-    
-    system_name = platform.system()
-    if system_name == 'Windows':
-        plt.rc('font', family='Malgun Gothic')
-    elif system_name == 'Darwin':
-        plt.rc('font', family='AppleGothic')
-    else:
-        paths = [
-            '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
-            '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf',
-            '/usr/share/fonts/truetype/nanum/NanumMyeongjo.ttf'
-        ]
-        font_name = None
-        for path in paths:
-            if os.path.exists(path):
-                font_name = fm.FontProperties(fname=path).get_name()
-                break
-        if font_name:
-            plt.rc('font', family=font_name)
-        else:
-            plt.rc('font', family='NanumGothic')
-    
-    plt.rc('axes', unicode_minus=False)
-    ax.barh(words, counts, color='#3B82F6')
-    ax.invert_yaxis()
-    ax.set_xlabel('빈도수')
-    ax.set_title('상위 20개 핵심 키워드')
-    return fig
+    return "gemini-1.5-flash"
 
 def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
     """Extracts relevant text chunks around keywords. Sizes reduced for Groq TPM limit."""
@@ -684,38 +640,62 @@ else:
                 half = max_chars // 2
                 return text[:half] + "\n\n... (중략) ...\n\n" + text[-half:]
 
-            user_content = f"[금년도 문서]\n{get_balanced_context(full_current_text, 20000)}\n\n[직전 회차 문서]\n{get_balanced_context(prev_text, 8000) if prev_text else '없음'}"
-            
             # Detect project name and store in session state
             project_name = detect_project_name(user_content)
             st.session_state.analysis_results["project_name"] = project_name
             
+            # 1. Main RFP Analysis
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
             
-            # Run consolidated analysis with Multi-Key Rotation
-            with st.spinner("전문가 모드로 제안요청서를 정밀 분석 중입니다..."):
+            with st.spinner(f"[{project_name}] 전문가 모드 정밀 분석 중..."):
                 response = invoke_with_retry(prompt, {"text": user_content}, api_keys)
                 
-                # Try to extract AI-detected project name from response
+                # Extract AI-detected project name (fallback)
                 ai_name_match = re.search(r'\[PROJECT_NAME:\s*(.*?)\]', response)
                 if ai_name_match:
                     project_name = ai_name_match.group(1).strip()
                     st.session_state.analysis_results["project_name"] = project_name
-                    # Remove the tag from the final response for cleaner UI
                     response = response.replace(ai_name_match.group(0), "").strip()
                 
-                # Clean Output aggressively
                 cleaned_response = clean_ai_output(response)
-                st.session_state.analysis_results["top_keywords"] = top_keywords
                 st.session_state.analysis_results["main_analysis"] = cleaned_response
-                
-                # Pre-generate and cache Docx report
-                import report_utils
-                report_data = {
-                    "제안요청서 분석 결과": cleaned_response,
-                    "키워드 인사이트": "" # Will be updated if summary exists
-                }
-                st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data, project_name=project_name)
+
+            # 2. Similar Research Discovery (Search & Sort)
+            with st.spinner("유사 학술연구 및 보도자료 검색 중..."):
+                try:
+                    search_prompt = ChatPromptTemplate.from_template("""
+당신은 학술연구 전문 사서이자 정부 보고서 분석 전문가입니다. 
+다음 [과업명]과 유사한 국내외 학술 연구, 논문, 그리고 정부/공공기관의 조사 보고서를 7~10개 정도 찾아내어 표로 정리하세요.
+
+[과업명]
+{project_name}
+
+[분석 지침]
+1. **학술 연구(논문)**를 최우선적으로 리스트업하세요.
+2. 각 항목에 대해 아래 정보를 반드시 포함하세요:
+   - 연도: 연도 4자리
+   - 저자명: 대표 저자명
+   - 저자 소속기관: 대학교 또는 연구기관명
+   - 보고서 발간 기간: (예: 2023.01 ~ 2023.12 또는 단일 시점)
+3. **정렬 규칙**:
+   - 1순위: 학술연구(논문) 여부 (논문을 상단에)
+   - 2순위: 저자명 가나다/ABC 순
+   - 3순위: 소속기관 가나다/ABC 순
+4. 표 형식으로만 출력하세요 (| 연도 | 저자명 | 저자 소속기관 | 보고서 발간 기간 |).
+5. 실제 존재하는 연구 데이터만 기반으로 작성하세요.
+""")
+                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, use_flash=False)
+                    st.session_state.analysis_results["similar_research"] = clean_ai_output(research_result)
+                except Exception as e:
+                    st.session_state.analysis_results["similar_research"] = f"유사연구 검색 중 오류 발생: {e}"
+
+            # 3. Pre-generate Docx report
+            import report_utils
+            report_data = {
+                "제안요청서 분석 결과": st.session_state.analysis_results["main_analysis"],
+                "유사연구 분석 리스트": st.session_state.analysis_results.get("similar_research", "")
+            }
+            st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data, project_name=project_name)
 
         except Exception as e:
             st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
@@ -731,7 +711,7 @@ else:
 
     # --- Persistent Display Area ---
     if "analysis_results" in st.session_state and st.session_state.analysis_results:
-        tabs = st.tabs(["📋 제안요청서 분석 결과", "📊 키워드 인사이트"])
+        tabs = st.tabs(["📋 제안요청서 분석 결과", "� 유사연구"])
         
         with tabs[0]:
             project_name = st.session_state.analysis_results.get("project_name", "미지정 사업")
@@ -743,37 +723,12 @@ else:
             st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 하단 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
 
         with tabs[1]:
-            st.header("📊 키워드 인사이트")
-            keywords = st.session_state.analysis_results.get("top_keywords", [])
-            chart = create_word_chart(keywords)
-            if chart: st.pyplot(chart)
-            
-            # Key Summary via LLM only if not already done
-            with st.spinner("핵심 키워드 기반 사업 요약 중..."):
-                try:
-                    if "keyword_summary" not in st.session_state.analysis_results:
-                        prompt_k = ChatPromptTemplate.from_template(
-                            "당신은 공공기관 입찰 전문가입니다. 상위 키워드를 분석하여 표로 정리하세요. 키워드: {keywords}"
-                        )
-                        # Use FLASH for secondary task to save tokens/quota
-                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(
-                            prompt_k, {"keywords": str(keywords)}, api_keys, use_flash=True
-                        )
-                    
-                    st.session_state.analysis_results["keyword_summary"] = clean_ai_output(st.session_state.analysis_results["keyword_summary"])
-                    st.markdown(st.session_state.analysis_results["keyword_summary"], unsafe_allow_html=True)
-                    
-                    # Update Docx with keyword summary if not already included
-                    if "docx_file" in st.session_state.analysis_results:
-                        import report_utils
-                        project_name = st.session_state.analysis_results.get("project_name", "미지정 사업")
-                        report_data = {
-                            "제안요청서 분석 결과": st.session_state.analysis_results.get("main_analysis", ""),
-                            "키워드 인사이트": st.session_state.analysis_results.get("keyword_summary", "")
-                        }
-                        st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data, project_name=project_name)
-                except:
-                    pass
+            st.header("� 유사연구")
+            research_text = st.session_state.analysis_results.get("similar_research", "")
+            if research_text:
+                st.markdown(research_text, unsafe_allow_html=True)
+            else:
+                st.info("유사연구 분석 결과가 없습니다.")
 
         # Display cached download button
         if st.session_state.analysis_results.get("docx_file"):

@@ -1,5 +1,6 @@
 import io
 import re
+import docx
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -43,20 +44,17 @@ def generate_word_report(results, project_name="미지정 사업"):
     Generates a Word document from the analysis results.
     results: dict { "Section Name": "Content Text", ... }
     """
-    # Import docx locally to use shared elements
-    import docx
+    doc = Document()
     
-    # Set Narrow Margins (0.5 inch / 1.27 cm)
+    # Set Narrow Margins and Add Page Numbers to Footer (Bottom Center)
     for section in doc.sections:
+        # Margins
         section.top_margin = Cm(1.27)
         section.bottom_margin = Cm(1.27)
         section.left_margin = Cm(1.27)
         section.right_margin = Cm(1.27)
-
-    doc = Document()
-    
-    # Add Page Numbers to Footer (Bottom Center)
-    for section in doc.sections:
+        
+        # Footer Page Number
         footer = section.footer
         p = footer.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
