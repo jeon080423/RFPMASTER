@@ -584,8 +584,10 @@ else:
             MODEL_NAME = admin_model
             model_display = f"{MODEL_NAME} (사용자 지정)"
         else:
-            MODEL_NAME = get_best_available_model(api_key)
-            model_display = f"{MODEL_NAME} (자동 최적화)"
+            # Regular users (or admin with 'Auto') now default to gemini-2.5-flash
+            # This ensures they use the best version by default as requested.
+            MODEL_NAME = "gemini-2.5-flash"
+            model_display = f"{MODEL_NAME} (고정 모델)"
         
         st.info(f"✨ 분석 모델: `{model_display}`")
 
