@@ -127,10 +127,13 @@ with st.sidebar:
                 # Keeping stable and high-perf models
                 model_options = [
                     "자동 최적화 (권장)", 
-                    "gemini-2.0-pro-exp-02-05", 
+                    "gemini-2.5-flash",
+                    "gemini-2.5-pro",
                     "gemini-2.0-flash", 
                     "gemini-1.5-pro", 
-                    "gemini-1.5-flash"
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-latest",
+                    "gemini-2.0-pro-exp-02-05"
                 ]
                 
                 # Model selection for the Admin themselves
@@ -393,17 +396,17 @@ def get_best_available_model(api_key):
         priority = [
             "models/gemini-2.5-pro",
             "models/gemini-2.5-flash",
-            "models/gemini-2.0-pro-exp",
             "models/gemini-2.0-flash",
             "models/gemini-1.5-pro",
             "models/gemini-1.5-pro-latest",
             "models/gemini-1.5-flash",
+            "models/gemini-1.5-flash-latest",
             "models/gemini-pro"
         ]
         
         for p in priority:
             if p in available_models:
-                return p.split("/")[-1]
+                return p.replace("models/", "")
         
         if available_models:
             return available_models[0].split("/")[-1]
@@ -435,7 +438,7 @@ def get_flash_model(api_key):
         
         for p in priority:
             if p in available_models:
-                return p.split("/")[-1]
+                return p.replace("models/", "")
     except: pass
     return "gemini-1.5-flash"
 
@@ -491,7 +494,21 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
             return chain.invoke(params)
         except Exception as e:
             error_str = str(e).lower()
+            
+            # Handle 404 Not Found by falling back to a guaranteed stable ID
+            if "not found" in error_str or "404" in error_str:
+                if actual_model != "gemini-1.5-flash-latest":
+                    try:
+                        llm = ChatGoogleGenerativeAI(temperature=0.0, model="gemini-1.5-flash-latest", google_api_key=key)
+                        return (prompt_template | llm | StrOutputParser()).invoke(params)
+                    except: pass
+
             if 'rate_limit' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
+                # [Smart Downgrade] If hit 429 while using 2.x models, force fallback to stable 1.5 Flash for next keys
+                if "gemini-2." in actual_model:
+                    st.info(f"🔄 **제미나이 2.x 한도 초과**: 안정적인 분석을 위해 다음 키부터는 처리 한도가 넉넉한 1.5 Flash 엔진으로 자동 전환합니다.")
+                    model_name = "gemini-1.5-flash-latest" 
+                
                 st.warning(f"🔄 제미나이 {i + 1}번 키 한도 초과. 다음 키로 즉시 전환합니다.")
                 continue # Try the next key in the list
             else:
@@ -644,8 +661,9 @@ else:
         
         # Security: ensure model is still in allowed options
         valid_options = [
-            "자동 최적화 (권장)", "gemini-2.0-pro-exp-02-05", "gemini-2.0-flash", 
-            "gemini-1.5-pro", "gemini-1.5-flash"
+            "자동 최적화 (권장)", "gemini-2.5-flash", "gemini-2.5-pro",
+            "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash",
+            "gemini-1.5-flash-latest", "gemini-2.0-pro-exp-02-05"
         ]
         if admin_model and admin_model not in valid_options:
             admin_model = "자동 최적화 (권장)"
