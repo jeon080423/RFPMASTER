@@ -1,3 +1,6 @@
+import streamlit as st
+import pdfplumber
+import pandas as pd
 import re
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -297,11 +300,6 @@ def extract_text_from_pdf(uploaded_file):
         # Mask PII and Cache
         final_text = mask_pii(text)
         st.session_state.extraction_cache[file_id] = final_text
-        return final_text
-        
-    except Exception as e:
-        return f"Error reading PDF: {e}"
-
         return final_text
         
     except Exception as e:
