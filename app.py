@@ -330,7 +330,7 @@ with col1:
 with col2:
     st.subheader("2. 직전 연도 공고 자료 (선택)")
     st.markdown("<div style='margin-bottom: 28px;'></div>", unsafe_allow_html=True)
-    prev_rfp = st.file_uploader("직전 년도 제안요청서 (PDF)", type=["pdf"], key="prev_rfp_uploader")
+    prev_rfp = st.file_uploader("직전 년도 제안요청서 또는 과업지시서", type=["pdf"], key="prev_rfp_uploader")
 
 # --- Conditional: Show analysis button only for logged-in & approved users ---
 is_logged_in = st.session_state.user is not None
@@ -379,7 +379,6 @@ else:
             full_current_text = extract_text_from_pdf(current_rfp)
             
             prev_text = ""
-            # Auto-detect if previous RFP was uploaded
             if prev_rfp:
                 prev_text = extract_text_from_pdf(prev_rfp)
             
@@ -391,23 +390,21 @@ else:
 
         # --- Diagnostics for user ---
         curr_len = len(full_current_text.strip())
+        prev_len = len(prev_text.strip()) if prev_text else 0
+
         if curr_len < 200:
-            st.error(f"⚠️ **문서 텍스트 추출 부족 (현재 {curr_len}자)**")
-            st.info("문서에서 텍스트를 거의 추출하지 못했습니다. 스캔된 이미지 PDF이거나 파일에 문제가 있을 수 있습니다. 텍스트가 포함된 PDF인지 확인해 주세요.")
-            with st.expander("추출된 텍스트 확인"):
-                st.code(full_current_text[:1000])
+            st.error(f"⚠️ **금년도 문서 텍스트 추출 부족 (현재 {curr_len}자)**")
+            st.info("문서에서 텍스트를 거의 추출하지 못했습니다. 텍스트가 포함된 PDF인지 확인해 주세요.")
             st.stop()
         else:
-            st.success(f"✅ 텍스트 추출 완료! (총 {curr_len}자)")
+            prev_msg = f" & 직전 연도 {prev_len}자" if prev_len > 0 else ""
+            st.success(f"✅ 텍스트 추출 완료! (금년도 {curr_len}자{prev_msg})")
 
         try:
-            # Dynamically select model based on API key permissions
             MODEL_NAME = get_best_available_model(api_key)
-            # Use info in container to stay during analysis
             st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
             llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
-            # Detect if previous document was actually provided
             has_prev = bool(prev_text.strip())
             
             # Skip Section 1 prompt if no previous document
@@ -439,12 +436,11 @@ else:
 # [CRITICAL RULE] NO HALLUCINATIONS & TABLE STABILITY
 1. **절대로** 문서에 없는 정보를 지어내지 마세요.
 2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
-3. **[표(Table) 작성 규칙]**: 표 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 쉼표(`,`) 또는 세미콜론(`;`)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요.
+3. **[표(Table) 작성 규칙]**: 모든 표(Section 1, 4, 5) 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 쉼표(`,`) 또는 세미콜론(`;`)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요.
 
 # [FORMATTING RULE] CONCISE TONE & LINE BREAKS
 - 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
 - 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
-- 본문(표 외부)에서는 가급적 불릿(`-`)을 사용하여 항목을 구분하세요.
 
 # [CITATION RULE]
 - **섹션 1 (표)**: 표 내부에는 **출처(페이지, 제목 등)를 절대 표기하지 마세요.**
@@ -464,7 +460,13 @@ else:
 **제출 서류 및 규격을 정리하고 출처 페이지를 표기하세요.**
 
 ## 5. 상세 전략 및 가점 요인 (Bonus Strategy)
-**가점 항목 및 전략적 제언을 정리하고 출처 페이지를 표기하세요.**
+**가점 항목 및 전략적 제언을 아래 표 형식으로 정리하세요.**
+
+| 구분 | 상세 내용 | 전략적 제언 |
+| :--- | :--- | :--- |
+| **가점 항목** | | |
+| **차별화 요소** | | |
+| **핵심 제언** | | |
 """
             # Use a balanced slice of the text
             def get_balanced_context(text, max_chars=30000):
