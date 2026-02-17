@@ -169,6 +169,33 @@ def analyze_keywords(text):
     count = Counter(nouns)
     return count.most_common(20)
 
+def get_best_available_model(api_key):
+    """Dynamically find the best available model for the given API key."""
+    try:
+        genai.configure(api_key=api_key)
+        # Fetch available models
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Priority list
+        priority = [
+            "models/gemini-1.5-pro",
+            "models/gemini-1.5-pro-latest",
+            "models/gemini-2.0-flash-exp", # 2.0 experimental if available
+            "models/gemini-1.5-flash",
+            "models/gemini-pro" # legacy
+        ]
+        
+        for p in priority:
+            if p in available_models:
+                return p.split("/")[-1]
+        
+        if available_models:
+            return available_models[0].split("/")[-1]
+    except Exception as e:
+        print(f"Model listing error: {e}")
+    
+    return "gemini-1.5-flash" # Safe fallback
+
 def create_word_chart(keywords):
     if not keywords: return None
     words, counts = zip(*keywords)
@@ -304,8 +331,9 @@ if start_analysis:
             st.code(full_current_text[:1000] + "...")
 
     try:
-        # Trying gemini-1.5-pro-latest which often resolves aliases/404 issues better than 'gemini-1.5-pro'
-        MODEL_NAME = "gemini-1.5-pro-latest"
+        # Dynamically select model based on API key permissions
+        MODEL_NAME = get_best_available_model(api_key)
+        st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
         llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
         has_prev = bool(prev_text.strip())
@@ -445,4 +473,4 @@ if start_analysis:
                 except Exception as diag_e:
                     st.write("모델 목록을 불러오지 못했습니다. API 키가 올바른지 확인해 주세요.")
 
-st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini 1.5 Pro</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
