@@ -63,6 +63,45 @@ def init_db():
                 sheet.update_cell(1, idx, col)
                 first_row.append(col)
 
+    # --- Initialize CONFIGS sheet ---
+    try:
+        sh = client.open(SHEET_NAME)
+        try:
+            config_sheet = sh.worksheet("CONFIGS")
+        except gspread.WorksheetNotFound:
+            config_sheet = sh.add_worksheet(title="CONFIGS", rows="100", cols="2")
+            config_sheet.append_row(["key", "value"])
+    except:
+        pass
+
+def get_global_setting(key, default=""):
+    """Fetches a global setting from the CONFIGS sheet."""
+    try:
+        client = get_connection()
+        sh = client.open(SHEET_NAME)
+        config_sheet = sh.worksheet("CONFIGS")
+        cell = config_sheet.find(key)
+        if cell:
+            return config_sheet.cell(cell.row, 2).value
+    except:
+        pass
+    return default
+
+def set_global_setting(key, value):
+    """Sets a global setting in the CONFIGS sheet."""
+    try:
+        client = get_connection()
+        sh = client.open(SHEET_NAME)
+        config_sheet = sh.worksheet("CONFIGS")
+        cell = config_sheet.find(key)
+        if cell:
+            config_sheet.update_cell(cell.row, 2, str(value))
+        else:
+            config_sheet.append_row([key, str(value)])
+        return True
+    except:
+        return False
+
 
 def get_all_users():
     """Fetches all user data as a DataFrame."""

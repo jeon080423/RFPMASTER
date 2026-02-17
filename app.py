@@ -121,12 +121,34 @@ with st.sidebar:
             st.markdown("---")
             with st.expander("🛠️ 관리자 설정", expanded=True):
                 model_options = ["자동 최적화 (권장)", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+                
+                # Model selection for the Admin themselves
                 st.selectbox(
-                    "분석 모델 강제 지정", 
+                    "관리자 전용 모델 지정", 
                     options=model_options, 
                     key="admin_selected_model",
-                    help="관리자만 설정 가능합니다. 일반 사용자는 최적화 로직이 적용됩니다."
+                    help="현재 세션에서 관리자 본인이 사용할 모델을 고릅니다."
                 )
+
+                # Global model setting for regular users
+                current_global_default = auth.get_global_setting("user_default_model", "gemini-2.5-flash")
+                # Find index of current setting in options
+                try: 
+                    default_idx = model_options.index(current_global_default)
+                except: 
+                    default_idx = 2 # Default to 2.5 flash if not found
+
+                new_global_default = st.selectbox(
+                    "🌟 일반 사용자 기본 모델 설정",
+                    options=model_options,
+                    index=default_idx,
+                    help="모든 일반 사용자가 기본적으로 사용하게 될 모델을 지정합니다. (실시간 반영)"
+                )
+                
+                if new_global_default != current_global_default:
+                    if auth.set_global_setting("user_default_model", new_global_default):
+                        st.success(f"기본 모델이 {new_global_default}로 변경되었습니다!")
+                        st.cache_data.clear() # Clear cache to reflect change
     else:
         # --- Not logged-in state ---
         st.markdown('<div class="sidebar-login-header">🔐 로그인</div>', unsafe_allow_html=True)
@@ -605,10 +627,14 @@ else:
             MODEL_NAME = admin_model
             model_display = f"{MODEL_NAME} (사용자 지정)"
         else:
-            # Regular users (or admin with 'Auto') now default to gemini-2.5-flash
-            # This ensures they use the best version by default as requested.
-            MODEL_NAME = "gemini-2.5-flash"
-            model_display = f"{MODEL_NAME} (고정 모델)"
+            # Load global default set by admin (cached for 10 mins)
+            @st.cache_data(ttl=600)
+            def fetch_default_model():
+                return auth.get_global_setting("user_default_model", "gemini-2.5-flash")
+            
+            global_model = fetch_default_model()
+            MODEL_NAME = global_model
+            model_display = f"{MODEL_NAME} (관리자 지정 기본값)"
         
         st.info(f"✨ 분석 모델: `{model_display}`")
 
