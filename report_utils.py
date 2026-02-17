@@ -18,12 +18,33 @@ def clean_markdown(text):
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     return text
 
-def generate_word_report(results):
+def add_page_number(run):
+    """Inserts an automatic page number field into a run."""
+    fldChar = qn('w:fldChar')
+    instrText = qn('w:instrText')
+    
+    # Beginning of field
+    fld_start = docx.oxml.shared.OxmlElement(fldChar)
+    fld_start.set(fldChar, 'begin')
+    run._element.append(fld_start)
+    
+    # Field instruction (PAGE)
+    instr_text = docx.oxml.shared.OxmlElement(instrText)
+    instr_text.text = "PAGE"
+    run._element.append(instr_text)
+    
+    # End of field
+    fld_end = docx.oxml.shared.OxmlElement(fldChar)
+    fld_end.set(fldChar, 'end')
+    run._element.append(fld_end)
+
+def generate_word_report(results, project_name="미지정 사업"):
     """
     Generates a Word document from the analysis results.
     results: dict { "Section Name": "Content Text", ... }
     """
-    doc = Document()
+    # Import docx locally to use shared elements
+    import docx
     
     # Set Narrow Margins (0.5 inch / 1.27 cm)
     for section in doc.sections:
@@ -32,8 +53,22 @@ def generate_word_report(results):
         section.left_margin = Cm(1.27)
         section.right_margin = Cm(1.27)
 
+    doc = Document()
+    
+    # Add Page Numbers to Footer (Bottom Center)
+    for section in doc.sections:
+        footer = section.footer
+        p = footer.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run()
+        add_page_number(run)
+        run.font.name = 'Malgun Gothic'
+        run.font.size = Pt(9)
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
+
     # Title
-    title = doc.add_heading('수주비책 (Win Strategy) 분석 보고서', 0)
+    display_title = f"수주비책 (Win Strategy) 분석 보고서\n[{project_name}]"
+    title = doc.add_heading(display_title, 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     # Set Korean Font Style

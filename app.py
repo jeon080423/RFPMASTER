@@ -486,6 +486,22 @@ else:
             return match.group(0)
         return default_label
 
+    def detect_project_name(text):
+        """Attempts to extract the project name from the first page of the RFP."""
+        lines = [l.strip() for l in text[:2000].split('\n') if l.strip()]
+        # Keywords that often precede a project name
+        keywords = ["사업명", "과업명", "용역명", "명칭", "목적"]
+        for i, line in enumerate(lines):
+            if any(kw in line for kw in keywords):
+                # If the line contains '사업명: XXX', return XXX
+                if ':' in line: return line.split(':', 1)[1].strip()
+                # Otherwise, the next line might be the title
+                if i + 1 < len(lines): return lines[i+1].strip()
+        # Fallback: Just return the first non-empty longish line as a guess
+        for line in lines[:5]:
+            if len(line) > 10: return line
+        return "미지정 사업"
+
     def clean_ai_output(text):
         """
         Forcefully removes <br> tags. 
@@ -648,6 +664,10 @@ else:
 
             user_content = f"[금년도 문서]\n{get_balanced_context(full_current_text, 20000)}\n\n[직전 회차 문서]\n{get_balanced_context(prev_text, 8000) if prev_text else '없음'}"
             
+            # Detect project name and store in session state
+            project_name = detect_project_name(user_content)
+            st.session_state.analysis_results["project_name"] = project_name
+            
             prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
             
             # Run consolidated analysis with Multi-Key Rotation
@@ -664,7 +684,7 @@ else:
                     "제안요청서 분석 결과": cleaned_response,
                     "키워드 인사이트": "" # Will be updated if summary exists
                 }
-                st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data)
+                st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data, project_name=project_name)
 
         except Exception as e:
             st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
@@ -683,12 +703,13 @@ else:
         tabs = st.tabs(["📋 제안요청서 분석 결과", "📊 키워드 인사이트"])
         
         with tabs[0]:
-            st.header("📋 제안요청서 분석 결과")
+            project_name = st.session_state.analysis_results.get("project_name", "미지정 사업")
+            st.header(f"📋 제안요청서 분석 결과 [{project_name}]")
             analysis_text = st.session_state.analysis_results.get("main_analysis", "")
             st.markdown(analysis_text, unsafe_allow_html=True)
             
             st.markdown("---")
-            st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 아래 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
+            st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 하단 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
 
         with tabs[1]:
             st.header("📊 키워드 인사이트")
@@ -714,11 +735,12 @@ else:
                     # Update Docx with keyword summary if not already included
                     if "docx_file" in st.session_state.analysis_results:
                         import report_utils
+                        project_name = st.session_state.analysis_results.get("project_name", "미지정 사업")
                         report_data = {
                             "제안요청서 분석 결과": st.session_state.analysis_results.get("main_analysis", ""),
                             "키워드 인사이트": st.session_state.analysis_results.get("keyword_summary", "")
                         }
-                        st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data)
+                        st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data, project_name=project_name)
                 except:
                     pass
 
@@ -734,5 +756,4 @@ else:
                 use_container_width=True,
                 key="final_dw_btn_stable_cached"
             )
-st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
-
+st.markdown('<div class="footer">Developed by ㅈㅅㅎ<br>jeon080423@gmail.com | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
