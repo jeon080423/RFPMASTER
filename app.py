@@ -489,33 +489,36 @@ def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_
     if model_name and model_name.startswith("groq-") and groq_api_key:
         try:
             groq_model = model_name.replace("groq-", "")
-            # Mapping short IDs and legacy IDs to actual current Groq model strings (verified Feb 2026)
             mapping = {
                 "openai-gpt-oss-120b": "openai/gpt-oss-120b",
                 "llama-4-preview": "meta-llama/llama-4-maverick-17b-128e-instruct",
                 "llama-3.3-70b": "llama-3.3-70b-versatile",
                 "qwen3-32b": "qwen/qwen3-32b",
-                # Legacy / Decommissioned redirects
                 "deepseek-r1-70b": "llama-3.3-70b-versatile",
                 "llama-3.1-70b": "llama-3.3-70b-versatile",
                 "gemma2-9b": "llama-3.3-70b-versatile"
             }
             actual_groq_model = mapping.get(groq_model, groq_model)
             
-            # Final safety block for decommissioned strings
-            decommissioned_keywords = ["llama-3.1", "gemma2", "deepseek-r1-distill-llama"]
-            if any(dec in actual_groq_model for dec in decommissioned_keywords):
+            # Final safety block
+            if any(dec in actual_groq_model for dec in ["llama-3.1", "gemma2", "deepseek-r1-distill-llama"]):
                 actual_groq_model = "llama-3.3-70b-versatile"
             
-            llm = ChatGroq(
-                temperature=0.0, 
-                model_name=actual_groq_model, 
-                groq_api_key=groq_api_key
-            )
+            llm = ChatGroq(temperature=0.0, model_name=actual_groq_model, groq_api_key=groq_api_key)
             chain = prompt_template | llm | StrOutputParser()
             return chain.invoke(params)
         except Exception as groq_err:
-            st.warning(f"🔄 Groq 우선 호출 실패 ({groq_err}). 제미나이로 전환합니다.")
+            error_msg = str(groq_err).lower()
+            # If hit TPM/RPM limit or 413 error (too large), try the "Versatile" (high-limit) model instead
+            if "rate_limit" in error_msg or "413" in error_msg or "tpm" in error_msg or "too large" in error_msg:
+                if actual_groq_model != "llama-3.3-70b-versatile":
+                    st.info(f"🔄 선택하신 모델의 처리 용량(TPM) 초과로 인해, 대용량 처리가 가능한 Llama 3.3 엔진으로 자동 전환하여 분석을 계속합니다.")
+                    try:
+                        llm = ChatGroq(temperature=0.0, model_name="llama-3.3-70b-versatile", groq_api_key=groq_api_key)
+                        return (prompt_template | llm | StrOutputParser()).invoke(params)
+                    except: pass
+            
+            st.warning(f"🔄 Groq 엔진 호출 지연으로 인해 제미나이로 전환하여 분석을 완료합니다.")
 
     # Try each Gemini key exactly once
     for i, key in enumerate(api_keys):
