@@ -190,7 +190,8 @@ with st.sidebar:
     st.markdown("**Developed by ㅈㅅㅎ**")
     st.markdown("""
     <div style='font-size: 0.8rem; color: #666; background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px;'>
-        💰 <b>후원:</b> 카뱅 3333-23-866708 ㅈㅅㅎ<br>
+        � <b>문의:</b> jeon080423@gmail.com<br>
+        �💰 <b>후원:</b> 카뱅 3333-23-866708 ㅈㅅㅎ<br>
         유료 API 결제 및 서버 유지비에 소중히 사용됩니다.
     </div>
     """, unsafe_allow_html=True)
@@ -521,11 +522,8 @@ else:
         with st.spinner("문서를 분석 중입니다..."):
             full_current_text = extract_text_from_pdf(current_rfp)
             
-            prev_text = ""
             if prev_rfp:
                 prev_text = extract_text_from_pdf(prev_rfp)
-            
-            top_keywords = analyze_keywords(full_current_text)
 
         # Detect Years
         curr_year = detect_year(full_current_text, "금년")
