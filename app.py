@@ -329,8 +329,8 @@ with col1:
 
 with col2:
     st.subheader("2. 직전 연도 공고 자료 (선택)")
-    no_prev_rfp = st.checkbox("직전 제안요청서 또는 과업지시서 없음", value=False)
-    prev_rfp = st.file_uploader("직전 년도 제안요청서 (PDF)", type=["pdf"], disabled=no_prev_rfp)
+    st.markdown("<div style='margin-bottom: 28px;'></div>", unsafe_allow_html=True)
+    prev_rfp = st.file_uploader("직전 년도 제안요청서 (PDF)", type=["pdf"], key="prev_rfp_uploader")
 
 # --- Conditional: Show analysis button only for logged-in & approved users ---
 is_logged_in = st.session_state.user is not None
@@ -379,14 +379,15 @@ else:
             full_current_text = extract_text_from_pdf(current_rfp)
             
             prev_text = ""
-            if not no_prev_rfp and prev_rfp:
+            # Auto-detect if previous RFP was uploaded
+            if prev_rfp:
                 prev_text = extract_text_from_pdf(prev_rfp)
             
             top_keywords = analyze_keywords(full_current_text)
 
         # Detect Years
         curr_year = detect_year(full_current_text, "금년")
-        prev_year = detect_year(prev_text, "직전") if prev_text else "직전"
+        prev_year = detect_year(prev_text, "직전") if prev_text else "없음"
 
         # --- Diagnostics for user ---
         curr_len = len(full_current_text.strip())
@@ -398,8 +399,6 @@ else:
             st.stop()
         else:
             st.success(f"✅ 텍스트 추출 완료! (총 {curr_len}자)")
-            with st.expander("추출된 텍스트 일부 확인"):
-                st.code(full_current_text[:1000] + "...")
 
         try:
             # Dynamically select model based on API key permissions
@@ -408,12 +407,15 @@ else:
             st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
             llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
 
-            # Skip Section 1 prompt if no_prev_rfp is True
+            # Detect if previous document was actually provided
+            has_prev = bool(prev_text.strip())
+            
+            # Skip Section 1 prompt if no previous document
             section_1_prompt = ""
-            if not no_prev_rfp:
+            if has_prev:
                 section_1_prompt = f"""
 ## 1. 제안요청서 핵심 비교 및 전략 (RFP Analysis)
-*금년도({curr_year})와 직전 연도({prev_year}) 정보를 비교하되, 직전 자료가 없으면 '정보 없음'으로 표기하세요.*
+*금년도({curr_year})와 직전 연도({prev_year}) 정보를 비교하세요.*
 
 | 구분 | {curr_year} 요구사항 | {prev_year} 요구사항 | 변경 내용 및 전략적 해설 |
 | :-- | :--- | :--- | :--- |
@@ -434,14 +436,15 @@ else:
 당신은 공공기관 입찰 전략 컨설턴트이자 20년 경력의 수석 리서치 연구원입니다. 
 당신의 임무는 절대적으로 제공된 [금년도 문서]의 텍스트를 기반으로 분석을 수행하는 것입니다.
 
-# [CRITICAL RULE] NO HALLUCINATIONS
+# [CRITICAL RULE] NO HALLUCINATIONS & TABLE STABILITY
 1. **절대로** 문서에 없는 정보를 지어내지 마세요.
 2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
+3. **[표(Table) 작성 규칙]**: 표 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 쉼표(`,`) 또는 세미콜론(`;`)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요.
 
 # [FORMATTING RULE] CONCISE TONE & LINE BREAKS
 - 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
-- 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
-- 웹 시인성을 위해 표 내부의 긴 문장은 가급적 불릿(`-`)을 사용하여 줄바꿈을 유도하세요.
+- 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
+- 본문(표 외부)에서는 가급적 불릿(`-`)을 사용하여 항목을 구분하세요.
 
 # [CITATION RULE]
 - **섹션 1 (표)**: 표 내부에는 **출처(페이지, 제목 등)를 절대 표기하지 마세요.**
@@ -455,7 +458,7 @@ else:
 **배점이 높거나 중요한 요건 3가지를 명사형으로 기술하고 출처 페이지를 표기하세요.**
 
 ## 3. 과업 내용 기반 필수 수행 체크리스트 (Must-Do List)
-**과업지시서상 필수 수행 과업을 추출하세요. [중요] 반드시 제안요청서의 '목차' 순서에 맞추어 재배치하여 제시하세요. 목차가 명확하지 않을 경우 일반적인 제안서 구성(사업이해-추진전략-수행계획-관리계획) 순서로 배치하세요.**
+**과업지시서상 필수 수행 과업을 추출하세요. [중요] 반드시 제안요청서의 '목차' 순서에 맞추어 재배치하여 제시하세요.**
 
 ## 4. 행정 서류 및 제안서 규격 체크리스트 (Administrative Check)
 **제출 서류 및 규격을 정리하고 출처 페이지를 표기하세요.**
@@ -512,24 +515,23 @@ else:
             chart = create_word_chart(keywords)
             if chart: st.pyplot(chart)
             
-            # Key Summary via LLM only if not already done? Simple to re-run for UI
+            # Key Summary via LLM only if not already done
             with st.spinner("핵심 키워드 기반 사업 요약 중..."):
                 try:
-                    # We can use the same llm instance if needed, but for persistence we should store this too
                     if "keyword_summary" not in st.session_state.analysis_results:
                         MODEL_NAME = get_best_available_model(api_key)
-                        llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
-                        prompt = ChatPromptTemplate.from_template(
+                        llm_k = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
+                        prompt_k = ChatPromptTemplate.from_template(
                             "당신은 공공기관 입찰 전문가입니다. 상위 키워드를 분석하여 표로 정리하세요. 키워드: {keywords}"
                         )
-                        chain = prompt | llm | StrOutputParser()
-                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(chain, {"keywords": str(keywords)})
+                        chain_k = prompt_k | llm_k | StrOutputParser()
+                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(chain_k, {"keywords": str(keywords)})
                     
                     st.markdown(st.session_state.analysis_results["keyword_summary"])
                 except:
                     pass
 
-        # Download Button inside Persistent Area
+        # Use absolute path link and stable button
         st.markdown("---")
         import report_utils
         # Build report dict for tool
@@ -545,7 +547,6 @@ else:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             type="primary",
             use_container_width=True,
-            key="final_dw_btn"
+            key="final_dw_btn_stable"
         )
-
 st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
