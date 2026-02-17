@@ -348,60 +348,64 @@ else:
 # -----------------------------------------------------------------------------
 # 5. Analysis Logic (only for approved users)
 # -----------------------------------------------------------------------------
-if start_analysis:
-    if not api_key:
-        st.error("분석을 시작하려면 API Key 설정이 필요합니다.")
-        st.stop()
-    if not current_rfp:
-        st.error("올해 제안요청서는 필수 업로드 항목입니다.")
-        st.stop()
+    # --- Helper to detect year from text ---
+    def detect_year(text, default_label):
+        # Look for 4 digits followed by '년' in the first 2000 chars (usually cover/title)
+        match = re.search(r'20\d{2}년', text[:2000])
+        if match:
+            return match.group(0)
+        return default_label
 
-    auth.increment_analysis_count(st.session_state.user['email'])
+    if start_analysis:
+        if not api_key:
+            st.error("분석을 시작하려면 API Key 설정이 필요합니다.")
+            st.stop()
+        if not current_rfp:
+            st.error("올해 제안요청서는 필수 업로드 항목입니다.")
+            st.stop()
 
-    with st.spinner("문서를 분석 중입니다..."):
-        full_current_text = extract_text_from_pdf(current_rfp)
-        
-        prev_text = ""
-        if not no_prev_rfp and prev_rfp:
-            prev_text = extract_text_from_pdf(prev_rfp)
-        
-        top_keywords = analyze_keywords(full_current_text)
+        # Clear old results for new analysis
+        st.session_state.analysis_results = {}
 
-    # --- Diagnostics for user ---
-    curr_len = len(full_current_text.strip())
-    if curr_len < 200:
-        st.error(f"⚠️ **문서 텍스트 추출 부족 (현재 {curr_len}자)**")
-        st.info("문서에서 텍스트를 거의 추출하지 못했습니다. 스캔된 이미지 PDF이거나 파일에 문제가 있을 수 있습니다. 텍스트가 포함된 PDF인지 확인해 주세요.")
-        with st.expander("추출된 텍스트 확인"):
-            st.code(full_current_text[:1000])
-        st.stop()
-    else:
-        st.success(f"✅ 텍스트 추출 완료! (총 {curr_len}자)")
-        with st.expander("추출된 텍스트 일부 확인"):
-            st.code(full_current_text[:1000] + "...")
+        auth.increment_analysis_count(st.session_state.user['email'])
 
-    try:
-        # Dynamically select model based on API key permissions
-        MODEL_NAME = get_best_available_model(api_key)
-        st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
-        llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
+        with st.spinner("문서를 분석 중입니다..."):
+            full_current_text = extract_text_from_pdf(current_rfp)
+            
+            prev_text = ""
+            if not no_prev_rfp and prev_rfp:
+                prev_text = extract_text_from_pdf(prev_rfp)
+            
+            top_keywords = analyze_keywords(full_current_text)
 
-        has_prev = bool(prev_text.strip())
+        # Detect Years
+        curr_year = detect_year(full_current_text, "금년")
+        prev_year = detect_year(prev_text, "직전") if prev_text else "없음"
 
-        tabs = st.tabs(["📋 제안요청서 분석 결과", "📊 키워드 인사이트"])
-        
-        if "analysis_results" not in st.session_state:
-            st.session_state.analysis_results = {}
+        # --- Diagnostics for user ---
+        curr_len = len(full_current_text.strip())
+        if curr_len < 200:
+            st.error(f"⚠️ **문서 텍스트 추출 부족 (현재 {curr_len}자)**")
+            st.info("문서에서 텍스트를 거의 추출하지 못했습니다. 스캔된 이미지 PDF이거나 파일에 문제가 있을 수 있습니다. 텍스트가 포함된 PDF인지 확인해 주세요.")
+            with st.expander("추출된 텍스트 확인"):
+                st.code(full_current_text[:1000])
+            st.stop()
+        else:
+            st.success(f"✅ 텍스트 추출 완료! (총 {curr_len}자)")
+            with st.expander("추출된 텍스트 일부 확인"):
+                st.code(full_current_text[:1000] + "...")
 
-        # =====================================================================
-        # Unified Analysis logic
-        # =====================================================================
-        with tabs[0]:
-            st.header("📋 제안요청서 분석 결과")
-            with st.spinner("전문가 모드로 제안요청서를 정밀 분석 중입니다..."):
-                try:
-                    # Stricter Sys Prompt to prevent placeholders
-                    sys_prompt = f"""
+        try:
+            # Dynamically select model based on API key permissions
+            MODEL_NAME = get_best_available_model(api_key)
+            # Use info in container to stay during analysis
+            st.info(f"✨ 분석 모델: `{MODEL_NAME}` (자동 최적화)")
+            llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
+
+            has_prev = bool(prev_text.strip())
+
+            # Stricter Sys Prompt with new rules
+            sys_prompt = f"""
 # Role Definition
 당신은 공공기관 입찰 전략 컨설턴트이자 20년 경력의 수석 리서치 연구원입니다. 
 당신의 임무는 절대적으로 제공된 [금년도 문서]의 텍스트를 기반으로 분석을 수행하는 것입니다.
@@ -409,19 +413,23 @@ if start_analysis:
 # [CRITICAL RULE] NO HALLUCINATIONS
 1. **절대로** 문서에 없는 정보를 지어내지 마세요.
 2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
-3. 오직 업로드된 문서 속의 사실(Fact)만 추출하세요.
 
-# [FORMATTING RULE] CONCISE TONE
-- 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 최대한 간결하게 설명하세요.
-- 표 내부 및 본문에서 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
+# [FORMATTING RULE] CONCISE TONE & LINE BREAKS
+- 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
+- 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
+- 웹 시인성을 위해 표 내부의 긴 문장은 가급적 불릿(`-`)을 사용하여 줄바꿈을 유도하세요.
+
+# [CITATION RULE]
+- **섹션 1 (표)**: 표 내부에는 **출처(페이지, 제목 등)를 절대 표기하지 마세요.** 오직 분석 내용만 담으세요.
+- **섹션 2, 3, 4, 5**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p), (p.24)). 제목은 생략하세요.
 
 # Analysis Instructions
-아래 5가지 섹션에 맞춰 분석 결과를 출력하세요. 각 항목은 구체적인 근거(조항, 페이지 등)를 함께 언급하세요.
+아래 5가지 섹션에 맞춰 분석 결과를 출력하세요.
 
 ## 1. 제안요청서 핵심 비교 및 전략 (RFP Analysis)
-*금년도와 직전 연도 정보를 비교하되, 직전 자료가 없으면 '정보 없음'으로 표기하세요.*
+*금년도({curr_year})와 직전 연도({prev_year}) 정보를 비교하되, 직전 자료가 없으면 '정보 없음'으로 표기하세요.*
 
-| 구분 | 2025년(금년) 요구사항 | 2024년(직전) 요구사항 | 변경 내용 및 전략적 해설 |
+| 구분 | {curr_year} 요구사항 | {prev_year} 요구사항 | 변경 내용 및 전략적 해설 |
 | :-- | :--- | :--- | :--- |
 | **사업 예산 및 기간** | | | |
 | **모집단** | | | |
@@ -435,101 +443,102 @@ if start_analysis:
 | **성과품 및 활용** | | | |
 
 ## 2. 배점표 기반 승부처 분석 (Scoring Strategy)
-**배점이 높거나 중요한 요건 3가지를 명사형으로 기술하세요.**
+**배점이 높거나 중요한 요건 3가지를 명사형으로 기술하고 출처 페이지를 표기하세요.**
 
 ## 3. 과업 내용 기반 필수 수행 체크리스트 (Must-Do List)
-**과업지시서상 필수 수행 과업을 추출하세요.**
+**과업지시서상 필수 수행 과업을 추출하고 출처 페이지를 표기하세요.**
 
 ## 4. 행정 서류 및 제안서 규격 체크리스트 (Administrative Check)
-**제출 서류 및 규격을 정리하세요.**
+**제출 서류 및 규격을 정리하고 출처 페이지를 표기하세요.**
 
 ## 5. 상세 전략 및 가점 요인 (Bonus Strategy)
-**가점 항목 및 전략적 제언을 정리하세요.**
-
----
-# Mandatory Rules
-- **Fact-Only:** 제공된 텍스트에 있는 내용만 사용.
-- **Strict Citation:** 조항이나 제목 인용 필수.
-- **Concise:** 군더더기 없는 명사형 종결 어미 사용.
-- **No HTML:** `<br>` 사용 금지, 실제 줄바꿈(`\n`) 사용.
+**가점 항목 및 전략적 제언을 정리하고 출처 페이지를 표기하세요.**
 """
-                    # Use a balanced slice of the text (Beginning and End are often most important)
-                    def get_balanced_context(text, max_chars=30000):
-                        if len(text) <= max_chars:
-                            return text
-                        half = max_chars // 2
-                        return text[:half] + "\n\n... (중략) ...\n\n" + text[-half:]
+            # Use a balanced slice of the text
+            def get_balanced_context(text, max_chars=30000):
+                if len(text) <= max_chars:
+                    return text
+                half = max_chars // 2
+                return text[:half] + "\n\n... (중략) ...\n\n" + text[-half:]
 
-                    current_context = get_balanced_context(full_current_text, 30000)
-                    prev_context = get_balanced_context(prev_text, 10000) if prev_text else "없음"
-                    
-                    user_content = f"[금년도 문서]\n{current_context}\n\n[직전 연도 문서]\n{prev_context}"
-                    
-                    prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
-                    chain = prompt | llm | StrOutputParser()
-                    
-                    # Run consolidated analysis
-                    response = invoke_with_retry(chain, {"text": user_content})
-                    st.markdown(response)
-                    st.session_state.analysis_results["제안요청서 분석 결과"] = response
-                    
-                except Exception as e:
-                    st.error(f"분석 중 오류가 발생했습니다: {e}")
+            current_context = get_balanced_context(full_current_text, 30000)
+            prev_context = get_balanced_context(prev_text, 10000) if prev_text else "없음"
+            
+            user_content = f"[금년도 문서]\n{current_context}\n\n[직전 연도 문서]\n{prev_context}"
+            
+            prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
+            chain = prompt | llm | StrOutputParser()
+            
+            # Run consolidated analysis
+            with st.spinner("전문가 모드로 제안요청서를 정밀 분석 중입니다..."):
+                response = invoke_with_retry(chain, {"text": user_content})
+                # Store keywords in results too
+                st.session_state.analysis_results["top_keywords"] = top_keywords
+                st.session_state.analysis_results["main_analysis"] = response
 
-        # =====================================================================
-        # Tab 2: Keyword Insight (Moved to end)
-        # =====================================================================
+        except Exception as e:
+            st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
+            # Diagnostic for 404
+            if "NOT_FOUND" in str(e) or "not found" in str(e).lower():
+                with st.expander("🛠️ API 모델 접근 진단"):
+                    try:
+                        genai.configure(api_key=api_key)
+                        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                        st.write("현재 API 키로 사용 가능한 모델 목록:")
+                        st.code("\n".join(models))
+                    except: pass
+
+    # --- Persistent Display Area ---
+    if "analysis_results" in st.session_state and st.session_state.analysis_results:
+        tabs = st.tabs(["📋 제안요청서 분석 결과", "📊 키워드 인사이트"])
+        
+        with tabs[0]:
+            st.header("📋 제안요청서 분석 결과")
+            analysis_text = st.session_state.analysis_results.get("main_analysis", "")
+            st.markdown(analysis_text)
+            
+            st.markdown("---")
+            st.warning("⚠️ **[주의] 현재 분석 결과는 임시 상태입니다. 상단 '워드 파일 다운로드' 버튼을 눌러 결과물을 저장하세요. 새로운 자료를 업로드하여 분석을 시작하면 기존 내용은 사라집니다.**")
+
         with tabs[1]:
             st.header("📊 키워드 인사이트")
-            chart = create_word_chart(top_keywords)
+            keywords = st.session_state.analysis_results.get("top_keywords", [])
+            chart = create_word_chart(keywords)
             if chart: st.pyplot(chart)
+            
+            # Key Summary via LLM only if not already done? Simple to re-run for UI
             with st.spinner("핵심 키워드 기반 사업 요약 중..."):
                 try:
-                    prompt = ChatPromptTemplate.from_template(
-                        "당신은 공공기관 입찰 전문가입니다. "
-                        "아래 제안요청서의 상위 핵심 키워드를 분석하여 다음을 마크다운 표로 정리하세요.\n\n"
-                        "| 구분 | 내용 |\n|---|---|\n"
-                        "| 사업명(추정) | ... |\n"
-                        "| 발주 기관(추정) | ... |\n"
-                        "| 핵심 주제 | 1~2문장 요약 |\n"
-                        "| 주요 키워드 군집 | 관련 키워드 그룹핑 |\n"
-                        "| 사업 유형 | 연구용역/시스템개발/조사사업 등 |\n\n"
-                        "표 외에 다른 형식(불릿, 번호 목록 등)은 절대 사용하지 마세요. "
-                        "반드시 한국어로만 작성하세요. 키워드: {keywords}"
-                    )
-                    chain = prompt | llm | StrOutputParser()
-                    insight = invoke_with_retry(chain, {"keywords": str(top_keywords)})
-                    st.markdown(insight)
-                    st.session_state.analysis_results["키워드 인사이트"] = f"Top Keywords: {str(top_keywords)}\n\n{insight}"
-                except Exception as e:
-                    st.error(f"키워드 분석 중 오류: {e}")
+                    # We can use the same llm instance if needed, but for persistence we should store this too
+                    if "keyword_summary" not in st.session_state.analysis_results:
+                        MODEL_NAME = get_best_available_model(api_key)
+                        llm = ChatGoogleGenerativeAI(temperature=0.0, model=MODEL_NAME, google_api_key=api_key)
+                        prompt = ChatPromptTemplate.from_template(
+                            "당신은 공공기관 입찰 전문가입니다. 상위 키워드를 분석하여 표로 정리하세요. 키워드: {keywords}"
+                        )
+                        chain = prompt | llm | StrOutputParser()
+                        st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(chain, {"keywords": str(keywords)})
+                    
+                    st.markdown(st.session_state.analysis_results["keyword_summary"])
+                except:
+                    pass
 
-        # Download Button
+        # Download Button inside Persistent Area
         st.markdown("---")
         import report_utils
-        if st.session_state.analysis_results:
-            docx_file = report_utils.generate_word_report(st.session_state.analysis_results)
-            st.download_button(
-                label="📥 분석 결과 워드 파일 다운로드",
-                data=docx_file,
-                file_name="win_strategy_report.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                type="primary",
-                use_container_width=True
-            )
-
-    except Exception as e:
-        st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
-        # Diagnostic: List available models if NOT_FOUND error occurs
-        if "NOT_FOUND" in str(e) or "not found" in str(e).lower():
-            with st.expander("🛠️ API 모델 접근 진단"):
-                try:
-                    genai.configure(api_key=api_key)
-                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    st.write("현재 API 키로 사용 가능한 모델 목록:")
-                    st.code("\n".join(models))
-                    st.info("여기에 'models/gemini-1.5-pro'가 없는 경우, 해당 계정의 API 접근 권한을 확인해 주세요.")
-                except Exception as diag_e:
-                    st.write("모델 목록을 불러오지 못했습니다. API 키가 올바른지 확인해 주세요.")
+        # Build report dict for tool
+        report_data = {
+            "제안요청서 분석 결과": st.session_state.analysis_results.get("main_analysis", ""),
+            "키워드 인사이트": st.session_state.analysis_results.get("keyword_summary", "")
+        }
+        docx_file = report_utils.generate_word_report(report_data)
+        st.download_button(
+            label="📥 분석 결과 워드 파일 다운로드",
+            data=docx_file,
+            file_name="win_strategy_report.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            type="primary",
+            use_container_width=True
+        )
 
 st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
