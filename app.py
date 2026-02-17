@@ -124,7 +124,7 @@ with st.sidebar:
 
             st.markdown("---")
             with st.expander("🛠️ 관리자 설정", expanded=True):
-                model_options = ["자동 최적화 (권장)", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "groq-llama-3.3-70b"]
+                model_options = ["자동 최적화 (권장)", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "groq-deepseek-r1-70b", "groq-llama-3.3-70b", "groq-gemma2-9b"]
                 
                 # Model selection for the Admin themselves
                 st.selectbox(
@@ -477,11 +477,17 @@ def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_
     if model_name and model_name.startswith("groq-") and groq_api_key:
         try:
             groq_model = model_name.replace("groq-", "")
-            if groq_model == "llama-3.3-70b": groq_model = "llama-3.3-70b-versatile"
+            # Mapping short IDs to actual Groq model strings
+            mapping = {
+                "deepseek-r1-70b": "deepseek-r1-distill-llama-70b",
+                "llama-3.3-70b": "llama-3.3-70b-versatile",
+                "gemma2-9b": "gemma2-9b-it"
+            }
+            actual_groq_model = mapping.get(groq_model, groq_model)
             
             llm = ChatGroq(
                 temperature=0.0, 
-                model_name=groq_model, 
+                model_name=actual_groq_model, 
                 groq_api_key=groq_api_key
             )
             chain = prompt_template | llm | StrOutputParser()
@@ -509,19 +515,26 @@ def invoke_with_retry(prompt_template, params, api_keys, groq_api_key=None, use_
             else:
                 raise e
                 
-    # --- Final Fallback to Groq ---
+    # --- Final Fallback to Groq (Using DeepSeek-R1 for better quality) ---
     if groq_api_key:
         try:
-            st.info("💡 모든 제미나이 한도가 초과되어 Groq 엔진(Llama-3.3-70b)으로 전환하여 분석을 완료합니다.")
+            st.info("💡 모든 제미나이 한도가 초과되어 고성능 추론 엔진 DeepSeek-R1(Groq)으로 전환하여 분석을 마무리합니다.")
             llm = ChatGroq(
                 temperature=0.0, 
-                model_name="llama-3.3-70b-versatile", 
+                model_name="deepseek-r1-distill-llama-70b", 
                 groq_api_key=groq_api_key
             )
             chain = prompt_template | llm | StrOutputParser()
             return chain.invoke(params)
         except Exception as groq_err:
-            st.error(f"❌ Groq 엔진 호출 실패: {groq_err}")
+            st.error(f"❌ Groq(DeepSeek-R1) 엔진 호출 실패: {groq_err}")
+            
+            # Last resort: Try Llama 3.3 if DeepSeek also fails
+            try:
+                llm = ChatGroq(temperature=0.0, model_name="llama-3.3-70b-versatile", groq_api_key=groq_api_key)
+                chain = prompt_template | llm | StrOutputParser()
+                return chain.invoke(params)
+            except: pass
 
     # If we reach here, everything failed.
     auth.record_quota_exhaustion()
