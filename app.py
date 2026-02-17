@@ -21,7 +21,7 @@ import email_utils
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="수주비책 - RFP 분석 솔루션",
-    page_icon="📊",
+    page_icon="favicon.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -407,12 +407,10 @@ else:
 
             has_prev = bool(prev_text.strip())
             
-            # Skip Section 1 prompt if no previous document
-            section_1_prompt = ""
-            if has_prev:
-                section_1_prompt = f"""
+            # Section 1 ALWAYS appears now. AI handles empty prev info.
+            section_1_prompt = f"""
 ## 1. 제안요청서 핵심 비교 및 전략 (RFP Analysis)
-*금년도({curr_year})와 직전 연도({prev_year}) 정보를 비교하세요.*
+*금년도({curr_year})와 직전 연도({prev_year}) 정보를 비교하세요. 직전 연도 정보가 '없음'인 경우 해당 칸은 '정보 없음'으로 기입하고 금년도 내용을 중점적으로 분석하세요.*
 
 | 구분 | {curr_year} 요구사항 | {prev_year} 요구사항 | 변경 내용 및 전략적 해설 |
 | :-- | :--- | :--- | :--- |
@@ -486,6 +484,14 @@ else:
                 cleaned_response = clean_ai_output(response)
                 st.session_state.analysis_results["top_keywords"] = top_keywords
                 st.session_state.analysis_results["main_analysis"] = cleaned_response
+                
+                # Pre-generate and cache Docx report
+                import report_utils
+                report_data = {
+                    "제안요청서 분석 결과": cleaned_response,
+                    "키워드 인사이트": "" # Will be updated if summary exists
+                }
+                st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data)
 
         except Exception as e:
             st.error(f"AI 분석 중 오류가 발생했습니다: {e}")
@@ -530,25 +536,28 @@ else:
                         st.session_state.analysis_results["keyword_summary"] = invoke_with_retry(chain_k, {"keywords": str(keywords)})
                     
                     st.markdown(st.session_state.analysis_results["keyword_summary"])
+                    
+                    # Update Docx with keyword summary if not already included
+                    if st.session_state.analysis_results.get("docx_file"):
+                        import report_utils
+                        report_data = {
+                            "제안요청서 분석 결과": st.session_state.analysis_results.get("main_analysis", ""),
+                            "키워드 인사이트": st.session_state.analysis_results.get("keyword_summary", "")
+                        }
+                        st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data)
                 except:
                     pass
 
-        # Use absolute path link and stable button
-        st.markdown("---")
-        import report_utils
-        # Build report dict for tool
-        report_data = {
-            "제안요청서 분석 결과": st.session_state.analysis_results.get("main_analysis", ""),
-            "키워드 인사이트": st.session_state.analysis_results.get("keyword_summary", "")
-        }
-        docx_file = report_utils.generate_word_report(report_data)
-        st.download_button(
-            label="📥 분석 결과 워드 파일 다운로드",
-            data=docx_file,
-            file_name="win_strategy_report.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            type="primary",
-            use_container_width=True,
-            key="final_dw_btn_stable"
-        )
+        # Display cached download button
+        if st.session_state.analysis_results.get("docx_file"):
+            st.markdown("---")
+            st.download_button(
+                label="📥 분석 결과 워드 파일 다운로드",
+                data=st.session_state.analysis_results["docx_file"],
+                file_name="win_strategy_report.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+                use_container_width=True,
+                key="final_dw_btn_stable_cached"
+            )
 st.markdown('<div class="footer">Developed by ㅈㅅㅎ | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
