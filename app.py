@@ -487,19 +487,38 @@ else:
         return default_label
 
     def detect_project_name(text):
-        """Attempts to extract the project name from the first page of the RFP."""
-        lines = [l.strip() for l in text[:2000].split('\n') if l.strip()]
-        # Keywords that often precede a project name
-        keywords = ["사업명", "과업명", "용역명", "명칭", "목적"]
+        """Attempts to extract the project name from the first page of the RFP with robust regex."""
+        if not text: return "미지정 사업"
+        
+        # 1. Look for keywords using regex to handle prefixes (1., 가., 등)
+        lines = [l.strip() for l in text[:3000].split('\n') if l.strip()]
+        keywords = ["사업명", "과업명", "용역명", "명칭", "프로젝트명", "공고명"]
+        
         for i, line in enumerate(lines):
-            if any(kw in line for kw in keywords):
-                # If the line contains '사업명: XXX', return XXX
-                if ':' in line: return line.split(':', 1)[1].strip()
-                # Otherwise, the next line might be the title
-                if i + 1 < len(lines): return lines[i+1].strip()
-        # Fallback: Just return the first non-empty longish line as a guess
-        for line in lines[:5]:
-            if len(line) > 10: return line
+            for kw in keywords:
+                # Regex: optional prefix, keyword, optional colon/bracket
+                pattern = rf'^(?:[0-9가-힣\d\.]+\s*)?{kw}\s*[:：\s\]\)]'
+                if re.search(pattern, line):
+                    # Try to get content after colon
+                    if ':' in line: 
+                        name = line.split(':', 1)[1].strip()
+                        if len(name) > 3: return name
+                    elif '：' in line:
+                        name = line.split('：', 1)[1].strip()
+                        if len(name) > 3: return name
+                    
+                    # If line ends with keyword, title is likely on the next line
+                    if i + 1 < len(lines):
+                        next_line = lines[i+1].strip()
+                        if len(next_line) > 3: return next_line
+        
+        # 2. Heuristic fallback: Look for a long line in the first 10 non-empty lines
+        # Usually titles are prominent.
+        for line in lines[:10]:
+            # Guess it's a title if it's long and doesn't look like an address or simple date
+            if 15 < len(line) < 100 and not any(x in line for x in ["주소", "일시", "일자", "연락처"]):
+                return line
+        
         return "미지정 사업"
 
     def clean_ai_output(text):
@@ -617,6 +636,9 @@ else:
 - **섹션 1, 2, 3, 4, 5, 6 (표)**: 표 내부의 셀에 **출처를 중복해서 표기하지 마세요.** 표에는 전용 '출처' 열이 있는 경우 그곳에만 표기하세요. (예: 섹션 3의 '상세 수행 내용' 칸에는 출처를 적지 마세요.)
 - **일반 텍스트**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p)).
 
+# [OUTPUT TAGS]
+- 답변 최상단에 반드시 해당 사업의 공식 명칭을 **[PROJECT_NAME: 공식과업명]** 형식으로 한 줄 적으세요. (예: [PROJECT_NAME: 2024년 고립·은둔 청년 실태조사])
+
 # Analysis Instructions
 아래 섹션에 맞춰 분석 결과를 출력하세요.
 {section_1_prompt}
@@ -673,6 +695,15 @@ else:
             # Run consolidated analysis with Multi-Key Rotation
             with st.spinner("전문가 모드로 제안요청서를 정밀 분석 중입니다..."):
                 response = invoke_with_retry(prompt, {"text": user_content}, api_keys)
+                
+                # Try to extract AI-detected project name from response
+                ai_name_match = re.search(r'\[PROJECT_NAME:\s*(.*?)\]', response)
+                if ai_name_match:
+                    project_name = ai_name_match.group(1).strip()
+                    st.session_state.analysis_results["project_name"] = project_name
+                    # Remove the tag from the final response for cleaner UI
+                    response = response.replace(ai_name_match.group(0), "").strip()
+                
                 # Clean Output aggressively
                 cleaned_response = clean_ai_output(response)
                 st.session_state.analysis_results["top_keywords"] = top_keywords
