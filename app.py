@@ -722,89 +722,6 @@ else:
         try:
             has_prev = bool(prev_text.strip())
             
-            # Section 1 ALWAYS appears now. AI handles empty prev info.
-            col1_header = "이번 회차"
-            col2_header = "직전 회차" if prev_text.strip() else "직전 자료 없음"
-            
-            section_1_prompt = f"""
-## 1. 제안요청서 핵심 비교 및 전략 (RFP Analysis)
-*금년도와 직전 정보를 비교분석하세요. 직전 정보가 없는 경우 해당 칸은 '정보 없음'으로 기입하세요.*
-
-| 구분 | {col1_header} | {col2_header} | 변경 내용 및 전략적 해설 |
-| :-- | :--- | :--- | :--- |
-| **사업 예산 및 기간** | | | |
-| **모집단** | | | |
-| **표본틀** | | | |
-| **표본할당방법** | | | |
-| **조사지역** | | | |
-| **표본수** | | | |
-| **조사방법(온라인/면접 등)** | | | |
-| **품질 및 검증 관리** | | | |
-| **필수 인력 요건** | | | |
-| **성과품 및 활용** | | | |
-"""
-
-            sys_prompt = f"""
-# Role Definition
-당신은 공공기관 입찰 전략 컨설턴트이자 20년 경력의 수석 리서치 연구원입니다. 
-당신의 임무는 절대적으로 제공된 [금년도 문서]의 텍스트를 기반으로 분석을 수행하는 것입니다.
-
-# [CRITICAL RULE] NO HALLUCINATIONS & TABLE STABILITY
-1. **절대로** 문서에 없는 정보를 지어내지 마세요.
-2. 정보가 없는 항목은 반드시 **"명시되지 않음"** 또는 **"확인 불가"**라고 작성하세요.
-3. **[표(Table) 작성 규칙]**: 모든 표(Section 1, 2, 3, 4, 5) 내부의 각 셀은 반드시 **한 줄**로 작성하세요. 셀 내부에서 불릿(`-`)이나 줄바꿈을 절대 사용하지 마세요. 줄바꿈이 필요한 경우 반드시 세미콜론(`; `)을 사용하여 한 줄로 나열하세요. 표의 구조(`|`)가 깨지지 않도록 극도로 주의하세요. 표 작성 시 반드시 헤더 구분을 위한 구분선(`| :--- | :--- |`)을 생략하지 마세요.
-
-# [FORMATTING RULE] CONCISE TONE & LINE BREAKS
-- 모든 문장은 **명사형 어미**(~함, ~임, ~필요, ~준비 등)를 사용하여 간결하게 설명하세요.
-- 줄바꿈이 필요한 경우 반드시 실제 줄바꿈(`\\n`)을 사용하세요. **`<br>` 태그는 절대 사용하지 마세요.**
-
-# [CITATION RULE]
-- **페이지 인식**: 텍스트 내의 `[Page N]` 표시가 해당 페이지의 시작을 의미합니다. 이를 기반으로 정확한 페이지 번호를 추출하세요.
-- **섹션 1, 2, 3, 4, 5, 6 (표)**: 표 내부의 셀에 **출처를 중복해서 표기하지 마세요.** 표에는 전용 '출처' 열이 있는 경우 그곳에만 표기하세요. (예: 섹션 3의 '상세 수행 내용' 칸에는 출처를 적지 마세요.)
-- **일반 텍스트**: 각 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기하세요 (예: (10p)).
-
-# [OUTPUT TAGS]
-- 답변 최상단에 반드시 해당 사업의 공식 명칭을 **[PROJECT_NAME: 공식과업명]** 형식으로 한 줄 적으세요. (예: [PROJECT_NAME: 2024년 고립·은둔 청년 실태조사])
-
-# Analysis Instructions
-아래 섹션에 맞춰 분석 결과를 출력하세요.
-{section_1_prompt}
-
-## 2. 배점표 기반 승부처 분석 (Scoring Strategy)
-**배점이 높거나 중요한 요건 3가지를 추출하여 아래 표 형식으로 정리하세요.**
-
-| 주요 요건 | 배점 | 상세 내용 및 전략 | 출처 |
-| :--- | :--- | :--- | :--- |
-| | | | |
-| | | | |
-| | | | |
-
-## 3. 과업 내용 기반 필수 수행 체크리스트 (Must-Do List)
-**과업지시서상 필수 수행 과업을 추출하여 아래 표 형식으로 정리하세요. [중요] 반드시 제안요청서의 '목차' 순서에 맞추어 재배치하고, 상세 수행 내용은 세미콜론(; )으로 연결하여 시인성을 높이세요.**
-
-| 순서 | 필수 과업 내용 | 상세 수행 내용 | 출처 |
-| :--- | :--- | :--- | :--- |
-| | | | |
-
-## 4. 행정 서류 및 제안서 규격 체크리스트 (Administrative Check)
-**제출 서류 및 규격을 정리하고 출처 페이지를 표기하세요.**
-
-## 5. 상세 전략 및 가점 요인 (Bonus Strategy)
-**가점 항목 및 전략적 제언을 아래 표 형식으로 정리하세요.**
-
-| 구분 | 상세 내용 | 전략적 제언 |
-| :--- | :--- | :--- |
-| **가점 항목** | | |
-| **차별화 요소** | | |
-| **핵심 제언** | | |
-
-## 6. 제안서 목차 및 구성안 (Proposal Skeleton)
-**분석된 과업과 배점을 바탕으로 승률을 높이는 최적의 제안서 구성(Skeleton)을 제안하세요.**
-
-| 대목차 | 중/소목차 | 핵심 포함 내용 및 전략 | 비중(%) |
-| :--- | :--- | :--- | :--- |
-| | | | |
-"""
             # Use a balanced slice of the text (Optimized for tokens)
             def get_balanced_context(text, max_chars=20000):
                 if not text: return ""
@@ -817,22 +734,122 @@ else:
             # Detect project name and store in session state
             project_name = detect_project_name(user_content)
             st.session_state.analysis_results["project_name"] = project_name
+            st.session_state.analysis_results["main_analysis"] = ""
+
+            # Common System Rules
+            common_rules = """
+당신은 공공기관 입찰 전략 컨설턴트입니다. 
+당신의 임무는 절대적으로 제공된 [금년도 문서]의 텍스트를 기반으로 분석을 수행하는 것입니다.
+
+[CRITICAL RULE]
+1. 절대로 지어내지 말 것. 문서에 없는 정보는 반드시 "명시되지 않음" 또는 "확인 불가"라고 작성할 것.
+2. 모든 문장은 명사형 어미(~함, ~임, ~필요)를 사용하여 간결하게 설명할 것.
+3. 모든 표 내부의 각 셀은 반드시 한 줄로 작성할 것. 셀 내부에서 불릿(-)이나 줄바꿈을 절대 사용하지 말 것. 줄바꿈이 필요한 경우 반드시 세미콜론(; )을 사용하여 한 줄로 나열할 것.
+4. <br> 태그는 절대 사용하지 말 것.
+5. 근거 뒤에 반드시 괄호를 사용하여 페이지만 표기할 것 (예: (10p)).
+6. 표 내부의 셀에 출처를 중복해서 표기하지 말 것. 출처 열이 따로 있다면 그곳에만 표기할 것.
+"""
+
+            # Definition of Analysis Sections
+            sections = [
+                {
+                    "id": "sec1",
+                    "title": "1. 제안요청서 핵심 비교 및 전략",
+                    "prompt": f"""{common_rules}
+아래 금년도와 직전 정보를 비교분석하여 표로 작성하세요. 직전 정보가 없는 경우 해당 칸은 '정보 없음'으로 기입하세요.
+| 구분 | 금년도 | 직전 회차 | 변경 내용 및 전략적 해설 |
+| :-- | :--- | :--- | :--- |
+| **사업 예산 및 기간** | | | |
+| **모집단 및 표본틀** | | | |
+| **표본 수 및 할당** | | | |
+| **조사 지역 및 방법** | | | |
+| **품질 및 검증 관리** | | | |
+| **인력 요건 및 성과품** | | | |
+"""
+                },
+                {
+                    "id": "sec2",
+                    "title": "2. 배점표 기반 승부처 분석",
+                    "prompt": f"""{common_rules}
+배점이 높거나 중요한 요건 3가지를 추출하여 아래 표 형식으로 정리하세요.
+| 주요 요건 | 배점 | 상세 내용 및 전략 | 출처 |
+| :--- | :--- | :--- | :--- |
+"""
+                },
+                {
+                    "id": "sec3",
+                    "title": "3. 과업 내용 기반 필수 수행 체크리스트",
+                    "prompt": f"""{common_rules}
+과업지시서상 필수 수행 과업을 추출하여 목차 순서에 맞게 정리하세요. 상세 수행 내용은 세미콜론(; )으로 연결하세요.
+| 순서 | 필수 과업 내용 | 상세 수행 내용 | 출처 |
+| :--- | :--- | :--- | :--- |
+"""
+                },
+                {
+                    "id": "sec4",
+                    "title": "4. 행정 서류 및 제안서 규격 체크리스트",
+                    "prompt": f"""{common_rules}
+제출 서류 및 규격을 정리하고 출처 페이지를 표기하세요.
+| 분류 | 상세 규격 및 서류 | 제출처 및 방식 | 출처 |
+| :--- | :--- | :--- | :--- |
+"""
+                },
+                {
+                    "id": "sec5",
+                    "title": "5. 상세 전략 및 가점 요인",
+                    "prompt": f"""{common_rules}
+가점 항목 및 전략적 제언을 아래 표 형식으로 정리하세요.
+| 구분 | 상세 내용 | 전략적 제언 |
+| :--- | :--- | :--- |
+| **가점 항목** | | |
+| **차별화 요소** | | |
+| **핵심 제언** | | |
+"""
+                },
+                {
+                    "id": "sec6",
+                    "title": "6. 제안서 목차 및 구성안 (Skeleton)",
+                    "prompt": f"""{common_rules}
+분석된 과업과 배점을 바탕으로 승률을 높이는 최적의 제안서 구성(Skeleton)을 제안하세요.
+| 대목차 | 중/소목차 | 핵심 포함 내용 및 전략 | 비중(%) |
+| :--- | :--- | :--- | :--- |
+"""
+                }
+            ]
+
+            # Live Update Container
+            status_container = st.empty()
+            progress_bar = st.progress(0)
             
-            # 1. Main RFP Analysis
-            prompt = ChatPromptTemplate.from_messages([("system", sys_prompt), ("user", "{text}")])
+            for i, sec in enumerate(sections):
+                current_percent = int((i / len(sections)) * 100)
+                progress_bar.progress(current_percent)
+                status_container.info(f"⏳ **[{project_name}]** 분석 중: {sec['title']} ({i+1}/{len(sections)})")
+                
+                full_prompt = f"{sec['prompt']}\n\n[CONTEXT]\n{user_content}"
+                prompt_obj = ChatPromptTemplate.from_template(full_prompt)
+                
+                result = invoke_with_retry(prompt_obj, {}, api_keys, model_name=MODEL_NAME)
+                
+                # Check for PROJECT_NAME in the first section only if needed, but we already have detect_project_name
+                if i == 0:
+                    ai_name_match = re.search(r'\[PROJECT_NAME:\s*(.*?)\]', result)
+                    if ai_name_match:
+                        project_name = ai_name_match.group(1).strip()
+                        st.session_state.analysis_results["project_name"] = project_name
+                        result = result.replace(ai_name_match.group(0), "").strip()
+
+                cleaned_sec = clean_ai_output(result)
+                
+                # Append to main_analysis
+                st.session_state.analysis_results["main_analysis"] += f"## {sec['title']}\n{cleaned_sec}\n\n"
             
-            with st.spinner(f"[{project_name}] 전문가 모드 정밀 분석 중..."):
-                response = invoke_with_retry(prompt, {"text": user_content}, api_keys, model_name=MODEL_NAME)
-                
-                # Extract AI-detected project name (fallback)
-                ai_name_match = re.search(r'\[PROJECT_NAME:\s*(.*?)\]', response)
-                if ai_name_match:
-                    project_name = ai_name_match.group(1).strip()
-                    st.session_state.analysis_results["project_name"] = project_name
-                    response = response.replace(ai_name_match.group(0), "").strip()
-                
-                cleaned_response = clean_ai_output(response)
-                st.session_state.analysis_results["main_analysis"] = cleaned_response
+            progress_bar.progress(100)
+            status_container.success(f"✅ **[{project_name}]** 분석 완료!")
+            time.sleep(1)
+            status_container.empty()
+            progress_bar.empty()
+
 
             # 2. Similar Research Discovery (Search & Sort)
             with st.spinner("유사 학술연구 및 보도자료 검색 중..."):
