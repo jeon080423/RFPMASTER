@@ -490,7 +490,7 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
     # Try each Gemini key
     for i, key in enumerate(api_keys):
         # Determine priority list for this specific key
-        if model_name:
+        if model_name and model_name != "자동 최적화 (권장)":
             # If manual model set, use only that model (but still allow v1 fallback if 404)
             models_to_try = [model_name]
         else:
