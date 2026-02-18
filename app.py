@@ -703,9 +703,16 @@ else:
         
         # Security: ensure model is still in allowed options
         valid_options = [
-            "자동 최적화 (권장)", "gemini-2.5-flash", "gemini-2.5-pro",
-            "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash",
-            "gemini-1.5-flash-latest", "gemini-2.0-pro-exp-02-05"
+            "자동 최적화 (권장)", 
+            "gemini-2.0-flash-lite-001",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash",
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash-exp",
+            "gemini-2.0-pro-exp-02-05",
+            "gemini-2.5-pro",
+            "gemini-3-pro-preview"
         ]
         if admin_model and admin_model not in valid_options:
             admin_model = "자동 최적화 (권장)"
@@ -949,4 +956,3 @@ else:
                 key="final_dw_btn_stable_cached"
             )
 st.markdown('<div class="footer">Developed by ㅈㅅㅎ<br>jeon080423@gmail.com | Powered by Streamlit & Google Gemini</div>', unsafe_allow_html=True)
-
