@@ -487,67 +487,74 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
     if not api_keys:
         raise Exception("API Key가 설정되지 않았습니다.")
     
-    # Try each Gemini key exactly once
+    # Try each Gemini key
     for i, key in enumerate(api_keys):
-        try:
-            # If a specific Gemini model was requested, use it, otherwise detect best
-            if model_name and (model_name.startswith("gemini-") or model_name.startswith("models/gemini-")):
-                actual_model = model_name
-            else:
-                actual_model = get_flash_model(key) if use_flash else get_best_available_model(key)
-                
-            # Normalize: ensure 'models/' prefix for Gemini models
-            if (actual_model.startswith("gemini-") or actual_model.startswith("gemini-3-")) and not actual_model.startswith("models/"):
-                actual_model = f"models/{actual_model}"
-                
-            # Default to stable v1 (v1beta often causes 404 for standard models)
-            llm = ChatGoogleGenerativeAI(temperature=0.0, model=actual_model, google_api_key=key, version="v1")
-            chain = prompt_template | llm | StrOutputParser()
-            return chain.invoke(params)
-        except Exception as e:
-            error_str = str(e).lower()
-            
-            # Handle 404 Not Found or other naming issues by falling back to guaranteed stable IDs and versions
-            if "not found" in error_str or "404" in error_str:
-                # Sequence of safe fallbacks: (model_name, api_version)
-                # Fallback to high-capacity options from dashboard if 404 occurs
-                safe_fallbacks = [
-                    ("models/gemini-2.0-flash-lite-001", "v1"),
-                    ("models/gemini-2.5-flash-lite", "v1"),
-                    ("models/gemini-2.0-flash", "v1")
+        # Determine priority list for this specific key
+        if model_name:
+            # If manual model set, use only that model (but still allow v1 fallback if 404)
+            models_to_try = [model_name]
+        else:
+            # Automatic optimization: get full priority list
+            if use_flash:
+                # Based on get_flash_model priority
+                models_to_try = [
+                    "models/gemini-2.0-flash-lite-001",
+                    "models/gemini-2.5-flash-lite",
+                    "models/gemini-2.0-flash",
+                    "models/gemini-3-flash-preview",
+                    "models/gemini-2.5-flash",
+                    "models/gemini-2.0-flash-exp"
                 ]
-                for fallback_model, fallback_version in safe_fallbacks:
-                    if actual_model != fallback_model:
-                        try:
-                            llm = ChatGoogleGenerativeAI(
-                                temperature=0.0, 
-                                model=fallback_model, 
-                                google_api_key=key,
-                                version=fallback_version
-                            )
-                            return (prompt_template | llm | StrOutputParser()).invoke(params)
-                        except Exception as inner_e:
-                            inner_msg = str(inner_e).lower()
-                            if "not found" not in inner_msg and "404" not in inner_msg:
-                                break 
-                                
-            # Define skipable errors that should trigger rotation to NEXT key
-            skipable_errors = [
-                'rate_limit', '429', 'resource_exhausted', # Limits
-                '404', 'not found',                        # Still getting 404 after fallbacks
-                '401', 'unauthorized',                     # Invalid key (Expired/Old)
-                '403', 'forbidden', 'permission'           # Permission issue
-            ]
-            
-            if any(err in error_str for err in skipable_errors):
-                st.warning(f"🔄 제미나이 {i + 1}번 키 오류 ({error_str[:120]}...). 다음 키로 전환합니다.")
-                continue # Try the next key in the list
             else:
+                # Based on get_best_available_model priority
+                models_to_try = [
+                    "models/gemini-2.0-flash-lite-001",
+                    "models/gemini-2.5-flash-lite",
+                    "models/gemini-2.0-flash",
+                    "models/gemini-3-flash-preview",
+                    "models/gemini-2.5-flash",
+                    "models/gemini-2.0-flash-exp",
+                    "models/gemini-2.0-pro-exp-02-05",
+                    "models/gemini-2.5-pro",
+                    "models/gemini-3-pro-preview"
+                ]
+
+        for actual_model in models_to_try:
+            try:
+                # Normalize: ensure 'models/' prefix
+                if (actual_model.startswith("gemini-") or actual_model.startswith("gemini-3-")) and not actual_model.startswith("models/"):
+                    actual_model = f"models/{actual_model}"
+                    
+                llm = ChatGoogleGenerativeAI(temperature=0.0, model=actual_model, google_api_key=key, version="v1")
+                chain = prompt_template | llm | StrOutputParser()
+                return chain.invoke(params)
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                
+                # Quota or Resource errors: Try NEXT MODEL in the same key
+                quota_errors = ['rate_limit', '429', 'resource_exhausted']
+                if any(err in error_str for err in quota_errors):
+                    st.warning(f"🔄 {i + 1}번 키 - {actual_model} 할당량 초과. 다음 모델 시도 중...")
+                    continue
+                
+                # Model not found: Try NEXT MODEL in the same key
+                if "not found" in error_str or "404" in error_str:
+                    st.warning(f"⚠️ {actual_model} 모델을 찾을 수 없음. 다음 모델 시도 중...")
+                    continue
+                
+                # Auth errors: Skip to NEXT KEY immediately
+                auth_errors = ['401', 'unauthorized', '403', 'forbidden', 'permission']
+                if any(err in error_str for err in auth_errors):
+                    st.warning(f"� {i + 1}번 키 인증 오류. 다음 키로 전환합니다.")
+                    break # Break inner loop to try next key
+                
+                # Unexpected error: Raise it
                 raise e
                 
     # If we reach here, everything failed.
     auth.record_quota_exhaustion()
-    raise Exception("모든 제미나이 API 키가 작동하지 않거나 호출 한도에 도달했습니다. (404/401/429 등) 각 키가 유효한지, 그리고 모델명이 올바른지 다시 확인해 주세요. 약 1분 후 다시 시도하시거나 오후 5시 초기화 이후 이용을 권장합니다.")
+    raise Exception("모든 제미나이 API 키와 모델의 호출 한도에 도달했거나 오류가 발생했습니다. (429/401/404 등)")
 
 st.info("⚠️ 정확한 분석을 위해 모든 문서는 **PDF 형식**으로 변환하여 업로드해 주세요.")
 
