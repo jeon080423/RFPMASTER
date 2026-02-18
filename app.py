@@ -125,15 +125,18 @@ with st.sidebar:
             with st.expander("🛠️ 관리자 설정", expanded=True):
                 # Cleaned up model options: removing 2.5 (beta/exp) and old versions if necessary
                 # Keeping stable and high-perf models
+                # Flash First, ordered by capacity (TPM/RPD/RPM) from dashboard
                 model_options = [
-                    "자동 최적화 (권장)", 
+                    "자동 최적화 (권장)", # Will use the flash_priority then pro_priority
+                    "gemini-2.0-flash-lite-001",
+                    "gemini-2.5-flash-lite",
+                    "gemini-2.0-flash",
+                    "gemini-3-flash-preview",
                     "gemini-2.5-flash",
+                    "gemini-2.0-flash-exp",
+                    "gemini-2.0-pro-exp-02-05",
                     "gemini-2.5-pro",
-                    "gemini-2.0-flash", 
-                    "gemini-1.5-pro", 
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-latest",
-                    "gemini-2.0-pro-exp-02-05"
+                    "gemini-3-pro-preview"
                 ]
                 
                 # Model selection for the Admin themselves
@@ -393,15 +396,17 @@ def get_best_available_model(api_key):
             available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
             st.session_state.model_cache[api_key] = available_models
         
+        # Dashboard capacity priority (Flash Lite/Normal -> Pro)
         priority = [
-            "models/gemini-2.5-pro",
-            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash-lite-001",
+            "models/gemini-2.5-flash-lite",
             "models/gemini-2.0-flash",
-            "models/gemini-1.5-pro",
-            "models/gemini-1.5-pro-latest",
-            "models/gemini-1.5-flash",
-            "models/gemini-1.5-flash-latest",
-            "models/gemini-pro"
+            "models/gemini-3-flash-preview",
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash-exp",
+            "models/gemini-2.0-pro-exp-02-05",
+            "models/gemini-2.5-pro",
+            "models/gemini-3-pro-preview"
         ]
         
         for p in priority:
@@ -411,7 +416,7 @@ def get_best_available_model(api_key):
         if available_models:
             return available_models[0]
     except: pass
-    return "gemini-1.5-flash"
+    return "models/gemini-2.0-flash-lite-001"
 
 def get_flash_model(api_key):
     """Dynamically find the fastest/cheapest available model (Flash first)."""
@@ -428,19 +433,21 @@ def get_flash_model(api_key):
             st.session_state.model_cache[api_key] = available_models
         
         # Priority: Flash 2.5 -> Flash 2.0 -> Flash 1.5
+        # Flash only priority by capacity
         priority = [
-            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash-lite-001",
+            "models/gemini-2.5-flash-lite",
             "models/gemini-2.0-flash",
-            "models/gemini-1.5-flash",
-            "models/gemini-1.5-flash-latest",
-            "models/gemini-1.5-pro"
+            "models/gemini-3-flash-preview",
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash-exp"
         ]
         
         for p in priority:
             if p in available_models:
                 return p
     except: pass
-    return "gemini-1.5-flash"
+    return "models/gemini-2.0-flash-lite-001"
 
 def get_relevant_context(text, keywords, box_size=2000, max_len=4000):
     """Extracts relevant text chunks around keywords. Sizes reduced for Groq TPM limit."""
@@ -484,13 +491,13 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
     for i, key in enumerate(api_keys):
         try:
             # If a specific Gemini model was requested, use it, otherwise detect best
-            if model_name and model_name.startswith("gemini-"):
+            if model_name and (model_name.startswith("gemini-") or model_name.startswith("models/gemini-")):
                 actual_model = model_name
             else:
                 actual_model = get_flash_model(key) if use_flash else get_best_available_model(key)
                 
             # Normalize: ensure 'models/' prefix for Gemini models
-            if actual_model.startswith("gemini-") and not actual_model.startswith("models/"):
+            if (actual_model.startswith("gemini-") or actual_model.startswith("gemini-3-")) and not actual_model.startswith("models/"):
                 actual_model = f"models/{actual_model}"
                 
             # Default to stable v1 (v1beta often causes 404 for standard models)
@@ -503,10 +510,11 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
             # Handle 404 Not Found or other naming issues by falling back to guaranteed stable IDs and versions
             if "not found" in error_str or "404" in error_str:
                 # Sequence of safe fallbacks: (model_name, api_version)
+                # Fallback to high-capacity options from dashboard if 404 occurs
                 safe_fallbacks = [
-                    ("models/gemini-1.5-flash-latest", "v1"),
-                    ("models/gemini-1.5-pro-latest", "v1"),
-                    ("models/gemini-pro", "v1")
+                    ("models/gemini-2.0-flash-lite-001", "v1"),
+                    ("models/gemini-2.5-flash-lite", "v1"),
+                    ("models/gemini-2.0-flash", "v1")
                 ]
                 for fallback_model, fallback_version in safe_fallbacks:
                     if actual_model != fallback_model:
