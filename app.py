@@ -67,8 +67,8 @@ with st.sidebar:
         # --- Logged-in state ---
         st.success(f"👤 **{st.session_state.user['name']}**님 접속 중")
         
-        if not st.session_state.user.get('approved', False):
-            st.warning("⏳ 계정 승인 대기 중")
+        # if not st.session_state.user.get('approved', False):
+        #     st.warning("⏳ 계정 승인 대기 중")
         
         if st.button("로그아웃", key="logout_sidebar", use_container_width=True):
             st.session_state.user = None
@@ -215,7 +215,7 @@ with st.sidebar:
                 else:
                     if auth.create_user(new_email, new_password, new_name):
                         email_utils.send_admin_notification(new_email, new_name)
-                        st.success("가입 요청 완료! 관리자 승인 후 이용 가능합니다.")
+                        st.success("✅ 가입이 완료되었습니다! 이제 바로 로그인하여 서비스를 이용하실 수 있습니다.")
                     else:
                         st.error("이미 가입된 이메일입니다.")
     
@@ -585,9 +585,9 @@ is_approved = is_logged_in and st.session_state.user.get('approved', False)
 if not is_logged_in:
     st.warning("🔒 분석 기능을 이용하려면 좌측 사이드바에서 **로그인**해 주세요.")
     start_analysis = False
-elif not is_approved:
-    st.warning("⏳ 계정 승인 대기 중입니다. 관리자 승인 후 분석 기능을 이용할 수 있습니다.")
-    start_analysis = False
+# elif not is_approved:
+#     st.warning("⏳ 계정 승인 대기 중입니다. 관리자 승인 후 분석 기능을 이용할 수 있습니다.")
+#     start_analysis = False
 else:
     start_analysis = st.button("제안요청서 분석 시작 🚀", type="primary", use_container_width=True)
 

@@ -186,9 +186,9 @@ def create_user(email, password, name):
         
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
-    # Auto-approve admin from secrets
+    # Auto-approve users by default
     role = 'user'
-    approved = 0 # 0 for False, 1 for True
+    approved = 1 # 0 for False, 1 for True (Changed to 1 for immediate access)
     
     try:
         admin_id = st.secrets["admin"]["id"]
