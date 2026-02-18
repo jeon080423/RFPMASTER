@@ -487,6 +487,10 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
     if not api_keys:
         raise Exception("API Key가 설정되지 않았습니다.")
     
+    # Track exhausted models in session state to avoid repeated retries across sections
+    if "exhausted_models" not in st.session_state:
+        st.session_state.exhausted_models = set()
+    
     # Try each Gemini key
     for i, key in enumerate(api_keys):
         # Determine priority list for this specific key
@@ -524,6 +528,10 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                 # Normalize: ensure 'models/' prefix
                 if (actual_model.startswith("gemini-") or actual_model.startswith("gemini-3-")) and not actual_model.startswith("models/"):
                     actual_model = f"models/{actual_model}"
+                
+                # Skip if this specific key-model combo is known to be exhausted in this session
+                if (i, actual_model) in st.session_state.exhausted_models:
+                    continue
                     
                 llm = ChatGoogleGenerativeAI(temperature=0.0, model=actual_model, google_api_key=key, version="v1")
                 chain = prompt_template | llm | StrOutputParser()
@@ -535,7 +543,8 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                 # Quota or Resource errors: Try NEXT MODEL in the same key
                 quota_errors = ['rate_limit', '429', 'resource_exhausted']
                 if any(err in error_str for err in quota_errors):
-                    st.warning(f"🔄 {i + 1}번 키 - {actual_model} 할당량 초과. 다음 모델 시도 중...")
+                    st.session_state.exhausted_models.add((i, actual_model))
+                    st.warning(f"🔄 {i + 1}번 키 - {actual_model} 할당량 초과. 자동 건너뜁니다.")
                     continue
                 
                 # Model not found: Try NEXT MODEL in the same key
@@ -677,8 +686,9 @@ else:
             st.error("올해 제안요청서는 필수 업로드 항목입니다.")
             st.stop()
 
-        # Clear old results for new analysis
+        # Clear old results and exhausted models for new analysis
         st.session_state.analysis_results = {}
+        st.session_state.exhausted_models = set()
 
         auth.increment_analysis_count(st.session_state.user['email'])
 
