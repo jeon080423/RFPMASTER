@@ -179,10 +179,18 @@ def create_user(email, password, name):
     
     sheet = client.open(SHEET_NAME).sheet1
     
-    # Check for duplicates
-    existing_users = get_all_users()
-    if not existing_users.empty and email in existing_users['email'].values:
-        return False
+    # Check for duplicates using fresh data
+    try:
+        # Fetch all emails from column 1 to check existence
+        # This bypasses the cache in get_all_users()
+        email_list = sheet.col_values(1)
+        if email in email_list:
+            return False
+    except Exception as e:
+        # Fallback to cache if API fails, though unlikely
+        existing_users = get_all_users()
+        if not existing_users.empty and email in existing_users['email'].values:
+            return False
         
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
