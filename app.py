@@ -592,8 +592,9 @@ else:
         text = sanitize_spaces(text)
         
         # 1. Look for keywords using regex to handle prefixes (1., 가., 등)
+        # Prioritize '과제명', '사업명', '조사명' as per user request
         lines = [l.strip() for l in text[:3000].split('\n') if l.strip()]
-        keywords = ["사업명", "과업명", "용역명", "명칭", "프로젝트명", "공고명"]
+        keywords = ["과제명", "사업명", "조사명", "용역명", "프로젝트명", "공고명"]
         
         for i, line in enumerate(lines):
             for kw in keywords:
@@ -778,6 +779,8 @@ else:
 
 ### 1) 사업 개요
 반드시 아래와 같은 표 형식으로 작성해줘.
+**사업명은 문서 첫 페이지나 서두에 명시된 '사업명', '과제명', '조사명', '용역명' 등의 공식 명칭을 정확히 기재할 것.**
+
 | 항목 | 내용 |
 | :--- | :--- |
 | 1. 사업명 | |
