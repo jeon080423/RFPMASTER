@@ -87,6 +87,11 @@ with st.sidebar:
                 else:
                     st.warning("비밀번호가 일치하지 않거나 비어있습니다.")
         
+        st.markdown("---")
+        st.subheader("⚙️ 분석 옵션")
+        # Default is False as per user request
+        enable_research = st.toggle("🔍 유사 분야 검색 포함", value=False, help="분석 완료 후 관련 학술 연구 및 보고서를 자동으로 검색합니다.")
+
         # Admin Logic
         if st.session_state.user.get('role') == 'admin':
             st.markdown("---")
@@ -381,11 +386,11 @@ def get_best_available_model(api_key):
         
         # Dashboard capacity priority (Flash Lite/Normal -> Pro)
         priority = [
+            "models/gemini-2.5-flash",
             "models/gemini-2.0-flash-lite-001",
             "models/gemini-2.5-flash-lite",
             "models/gemini-2.0-flash",
             "models/gemini-3-flash-preview",
-            "models/gemini-2.5-flash",
             "models/gemini-2.0-flash-exp",
             "models/gemini-2.0-pro-exp-02-05",
             "models/gemini-2.5-pro",
@@ -418,11 +423,11 @@ def get_flash_model(api_key):
         # Priority: Flash 2.5 -> Flash 2.0 -> Flash 1.5
         # Flash only priority by capacity
         priority = [
+            "models/gemini-2.5-flash",
             "models/gemini-2.0-flash-lite-001",
             "models/gemini-2.5-flash-lite",
             "models/gemini-2.0-flash",
             "models/gemini-3-flash-preview",
-            "models/gemini-2.5-flash",
             "models/gemini-2.0-flash-exp"
         ]
         
@@ -485,21 +490,21 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
             if use_flash:
                 # Based on get_flash_model priority
                 models_to_try = [
+                    "models/gemini-2.5-flash",
                     "models/gemini-2.0-flash-lite-001",
                     "models/gemini-2.5-flash-lite",
                     "models/gemini-2.0-flash",
                     "models/gemini-3-flash-preview",
-                    "models/gemini-2.5-flash",
                     "models/gemini-2.0-flash-exp"
                 ]
             else:
                 # Based on get_best_available_model priority
                 models_to_try = [
+                    "models/gemini-2.5-flash",
                     "models/gemini-2.0-flash-lite-001",
                     "models/gemini-2.5-flash-lite",
                     "models/gemini-2.0-flash",
                     "models/gemini-3-flash-preview",
-                    "models/gemini-2.5-flash",
                     "models/gemini-2.0-flash-exp",
                     "models/gemini-2.0-pro-exp-02-05",
                     "models/gemini-2.5-pro",
@@ -867,9 +872,10 @@ else:
 
 
             # 2. Similar Research Discovery (Search & Sort)
-            with st.spinner("유사 학술연구 및 보도자료 검색 중..."):
-                try:
-                    search_prompt = ChatPromptTemplate.from_template("""
+            if enable_research:
+                with st.spinner("유사 학술연구 및 보도자료 검색 중..."):
+                    try:
+                        search_prompt = ChatPromptTemplate.from_template("""
 당신은 학술연구 전문 사서이자 정부 보고서 분석 전문가입니다. 
 다음 [과업명]과 유사한 **국내** 학술 연구, 논문, 그리고 정부/공공기관의 조사 보고서를 7~10개 정도 찾아내어 표로 정리하세요.
 **[중요] 반드시 국내 자료만 리스트업하고, 해외 연구는 제외하세요.**
@@ -893,10 +899,12 @@ else:
 4. 표 형식으로만 출력하세요 (| 연도 | 논문/보고서명 | 저자명 | 저자 소속기관 | 보고서 발간 기간 |).
 5. 실제 존재하는 연구 데이터만 기반으로 작성하세요.
 """)
-                    research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, use_flash=False, model_name=MODEL_NAME)
-                    st.session_state.analysis_results["similar_research"] = clean_ai_output(research_result)
-                except Exception as e:
-                    st.session_state.analysis_results["similar_research"] = f"유사연구 검색 중 오류 발생: {e}"
+                        research_result = invoke_with_retry(search_prompt, {"project_name": project_name}, api_keys, use_flash=False, model_name=MODEL_NAME)
+                        st.session_state.analysis_results["similar_research"] = clean_ai_output(research_result)
+                    except Exception as e:
+                        st.session_state.analysis_results["similar_research"] = f"유사연구 검색 중 오류 발생: {e}"
+            else:
+                st.session_state.analysis_results["similar_research"] = "사용자가 유사 연구 검색을 비활성화했습니다."
 
             # 3. Pre-generate Docx report
             import report_utils
