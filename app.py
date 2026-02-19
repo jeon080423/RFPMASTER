@@ -121,8 +121,6 @@ with st.sidebar:
                     "gemini-2.0-flash",
                     "gemini-3-flash-preview",
                     "gemini-2.5-flash",
-                    "gemini-2.0-flash-exp",
-                    "gemini-2.0-pro-exp-02-05",
                     "gemini-2.5-pro",
                     "gemini-3-pro-preview"
                 ]
@@ -391,8 +389,6 @@ def get_best_available_model(api_key):
             "models/gemini-2.5-flash-lite",
             "models/gemini-2.0-flash",
             "models/gemini-3-flash-preview",
-            "models/gemini-2.0-flash-exp",
-            "models/gemini-2.0-pro-exp-02-05",
             "models/gemini-2.5-pro",
             "models/gemini-3-pro-preview"
         ]
@@ -427,8 +423,7 @@ def get_flash_model(api_key):
             "models/gemini-2.0-flash-lite-001",
             "models/gemini-2.5-flash-lite",
             "models/gemini-2.0-flash",
-            "models/gemini-3-flash-preview",
-            "models/gemini-2.0-flash-exp"
+            "models/gemini-3-flash-preview"
         ]
         
         for p in priority:
@@ -494,8 +489,7 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                     "models/gemini-2.0-flash-lite-001",
                     "models/gemini-2.5-flash-lite",
                     "models/gemini-2.0-flash",
-                    "models/gemini-3-flash-preview",
-                    "models/gemini-2.0-flash-exp"
+                    "models/gemini-3-flash-preview"
                 ]
             else:
                 # Based on get_best_available_model priority
@@ -505,8 +499,6 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                     "models/gemini-2.5-flash-lite",
                     "models/gemini-2.0-flash",
                     "models/gemini-3-flash-preview",
-                    "models/gemini-2.0-flash-exp",
-                    "models/gemini-2.0-pro-exp-02-05",
                     "models/gemini-2.5-pro",
                     "models/gemini-3-pro-preview"
                 ]
@@ -714,8 +706,6 @@ else:
             "gemini-2.0-flash",
             "gemini-3-flash-preview",
             "gemini-2.5-flash",
-            "gemini-2.0-flash-exp",
-            "gemini-2.0-pro-exp-02-05",
             "gemini-2.5-pro",
             "gemini-3-pro-preview"
         ]
