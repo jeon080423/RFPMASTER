@@ -12,6 +12,7 @@ import google.generativeai as genai
 import traceback
 import auth
 import email_utils
+import random
 
 # -----------------------------------------------------------------------------
 # 1. Config & Branding
@@ -225,6 +226,10 @@ with st.sidebar:
     # Fallback to env if empty
     if not api_keys and os.environ.get("GOOGLE_API_KEY"):
         api_keys.append(os.environ.get("GOOGLE_API_KEY"))
+    
+    # Shuffle keys for load balancing
+    if api_keys:
+        random.shuffle(api_keys)
     
     # Current primary key for simple usage
     api_key = api_keys[0] if api_keys else ""
