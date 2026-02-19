@@ -585,18 +585,47 @@ else:
         return text.replace('\xa0', ' ').replace('\u200b', '').replace('\uFEFF', '').strip()
 
     def detect_project_name(text):
-        """Attempts to extract the project name from the first page of the RFP with robust regex."""
+        """Attempts to extract the project name from the first page of the RFP with robust logic."""
         if not text: return "미지정 사업"
         
         # Sanitize input text first
         text = sanitize_spaces(text)
         
-        # 1. Look for keywords using regex to handle prefixes (1., 가., 등)
-        # Prioritize '과제명', '사업명', '조사명' as per user request
-        lines = [l.strip() for l in text[:3000].split('\n') if l.strip()]
-        keywords = ["과제명", "사업명", "조사명", "용역명", "프로젝트명", "공고명"]
+        # Limit to the first page content (approx 2000 chars or 50 lines)
+        header_text = text[:3000]
+        lines = [l.strip() for l in header_text.split('\n') if l.strip()]
         
-        for i, line in enumerate(lines):
+        # 1. Strongest Signal: Project Name usually ends with "사업", "용역", "조사", "구축", "개발"
+        # and is located before "제안요청서" or "과업지시서" on the cover page.
+        
+        # Candidates lines
+        cover_lines = lines[:30] # Check first 30 lines
+        
+        for i, line in enumerate(cover_lines):
+            # Clean up line for checking
+            clean_line = re.sub(r'\s+', '', line)
+            
+            # Check for strong endings
+            if any(line.endswith(suffix) or line.endswith(suffix + "서") for suffix in ["사업", "용역", "조사", "구축", "개발", "계획", "건"]):
+                # Exclude if it's just "제안요청서" or "과업지시서"
+                if clean_line in ["제안요청서", "과업지시서", "과업내용서", "입찰공고"]:
+                    continue
+                # Exclude if it looks like a date or partial text
+                if len(line) > 5 and not re.search(r'^\d{4}\.', line):
+                    return line
+
+        # 2. Look for lines immediately preceding "제안요청서"
+        for i, line in enumerate(cover_lines):
+            if "제안요청서" in line or "과업지시서" in line:
+                # Check previous line
+                if i > 0:
+                    prev_line = cover_lines[i-1]
+                    if len(prev_line) > 5 and not any(x in prev_line for x in ["공고", "제출", "안내"]):
+                        return prev_line
+        
+        # 3. Explicit Keyword Search (Original Logic)
+        keywords = ["과제명", "사업명", "조사명", "용역명", "프로젝트명", "공고명"]
+        for line in lines:
             for kw in keywords:
                 # Regex: optional prefix, keyword, optional colon/bracket
                 pattern = rf'^(?:[0-9가-힣\d\.]+\s*)?{kw}\s*[:：\s\]\)]'
@@ -610,16 +639,21 @@ else:
                         if len(name) > 3: return name
                     
                     # If line ends with keyword, title is likely on the next line
-                    if i + 1 < len(lines):
-                        next_line = lines[i+1].strip()
+                    idx = lines.index(line)
+                    if idx + 1 < len(lines):
+                        next_line = lines[idx+1].strip()
                         if len(next_line) > 3: return next_line
         
-        # 2. Heuristic fallback: Look for a long line in the first 10 non-empty lines
-        # Usually titles are prominent.
-        if lines:
-            for line in lines[:10]:
-                # Guess it's a title if it's long and doesn't look like an address or simple date
-                if 15 < len(line) < 100 and not any(x in line for x in ["주소", "일시", "일자", "연락처"]):
+        # 4. Fallback: Look for a prominent line (long, not header/footer/date)
+        for line in lines[:20]:
+            # Skip TOC/PageNum
+            if re.search(r'\.{3,}|\d+\s*$', line) or "..." in line: continue
+            # Skip Headers
+            if any(x in line for x in ["주소", "일시", "일자", "연락처", "목차", "CONTENTS", "사업 개요", "과업 지시서", "제안요청서", "과업지시서"]): continue
+            
+            if 10 < len(line) < 100:
+                # Additional check: doesn't start with special chars unlikely for title
+                if not re.match(r'^[-\*\(]', line):
                     return sanitize_spaces(line)
         
         return "미지정 사업"
