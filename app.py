@@ -91,24 +91,7 @@ with st.sidebar:
         if st.session_state.user.get('role') == 'admin':
             st.markdown("---")
             st.subheader("👑 관리자 메뉴")
-            pending_users = auth.get_pending_users()
-            if not pending_users.empty:
-                st.warning(f"승인 대기: {len(pending_users)}명")
-                for _, row in pending_users.iterrows():
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.write(f"**{row['name']}** ({row['email']})")
-                    with col2:
-                        if st.button("승인", key=f"btn_{row['email']}"):
-                            auth.approve_user(row['email'])
-                            success, form = email_utils.send_approval_email(row['email'])
-                            if success:
-                                st.success(f"승인 완료!")
-                            else:
-                                st.warning(f"승인 완료, 메일 실패")
-                            st.rerun()
-            else:
-                st.info("승인 대기 중인 회원 없음")
+            # 승인 대기자 목록 UI 제거됨 (자동 승인 정책)
             
             st.markdown("---")
             st.subheader("📊 사용자 활동 현황")
