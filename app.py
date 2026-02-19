@@ -858,10 +858,10 @@ else:
                 progress_bar.progress(current_percent)
                 status_container.info(f"⏳ **[{project_name}]** 분석 중: {sec['title']} ({i+1}/{len(sections)})")
                 
-                full_prompt = f"{sec['prompt']}\n\n[CONTEXT]\n{user_content}"
+                full_prompt = f"{sec['prompt']}\n\n[CONTEXT]\n{{user_content}}"
                 prompt_obj = ChatPromptTemplate.from_template(full_prompt)
                 
-                result = invoke_with_retry(prompt_obj, {}, api_keys, model_name=MODEL_NAME)
+                result = invoke_with_retry(prompt_obj, {"user_content": user_content}, api_keys, model_name=MODEL_NAME)
                 
                 # Check for PROJECT_NAME in the first section only if needed, but we already have detect_project_name
                 if i == 0:
