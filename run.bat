@@ -1,8 +1,8 @@
 
 @echo off
 echo [Setting up Environment...]
-pip install -r requirements.txt
+py -m pip install -r requirements.txt
 echo.
 echo [Running Win Strategy App...]
-streamlit run app.py
+py -m streamlit run app.py
 pause

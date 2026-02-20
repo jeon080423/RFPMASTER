@@ -143,7 +143,7 @@ with st.sidebar:
                 # Keeping stable and high-perf models
                 # Flash First, ordered by capacity (TPM/RPD/RPM) from dashboard
                 model_options = [
-                    "자동 최적화 (권장)", # Will use the flash_priority then pro_priority
+                    "자동 최적화", # Will use the flash_priority then pro_priority
                     "gemini-2.0-flash-lite-001",
                     "gemini-2.5-flash-lite",
                     "gemini-2.0-flash",
@@ -509,7 +509,7 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
     # Try each Gemini key
     for i, key in enumerate(api_keys):
         # Determine priority list for this specific key
-        if model_name and model_name != "자동 최적화 (권장)":
+        if model_name and model_name != "자동 최적화":
             # If manual model set, use only that model (but still allow v1 fallback if 404)
             models_to_try = [model_name]
         else:
@@ -714,24 +714,24 @@ else:
                 cleaned_line = re.sub(r'<br\s*/?>', '\n', line, flags=re.IGNORECASE)
                 cleaned_lines.append(cleaned_line)
         
-        # Final step for UI: Convert marker back to '<br>' for rendering inside tables in Streamlit (HTML)
-        # But report_utils will use the marker to split paragraphs
+        # Final step for UI: Convert markers back to '<br>' for rendering inside tables in Streamlit (HTML)
+        # Also, replace '; ' with '<br>' to ensure list items break lines in the Web UI as requested by user.
+        # report_utils.py has been updated to handle <br> tags as well.
         result = '\n'.join(cleaned_lines)
-        # Note: For Streamlit display, we might want <br> back, but let's keep it simple.
-        # Streamlit Markdown table doesn't support <br> well anyway without unsafe_allow_html=True on the whole block.
-        # Actually our app uses st.markdown(unsafe_allow_html=True).
-        # Let's revert valid <br> for UI display if needed, but report_utils needs the marker.
-        # Optimization: We return the marker version. 
-        # UI might see <<BR>>? No, we should probably handle UI vs Docx.
-        # Current logic: returns result. 
-        # Let's simple replace <<BR>> with <br> ONLY for the return value? 
-        # Wait, report generation uses st.session_state.analysis_results["main_analysis"].
-        # If we change it here, UI will show <<BR>>.
-        # Let's stick to <<BR>> and users will accept it or we fix UI rendering later.
-        # Users didn't complain about UI, only Docx.
-        # Actually, let's swap <<BR>> back to <br> for the final return? 
-        # NO, report_utils needs <<BR>>. 
-        # Let's leave it as <<BR>> for now to ensure DOCX works. 
+        
+        if '|' in result:
+            final_lines = []
+            for line in result.split('\n'):
+                if '|' in line:
+                    # 1. Restore specific line breaks (<<BR>>)
+                    line = line.replace('<<BR>>', '<br>')
+                    # 2. Convert list separators (; ) to line breaks (<br>) for better readability
+                    # Only replace if it's likely a list separator (semicolon followed by space)
+                    line = re.sub(r';\s?', '<br>', line)
+                    final_lines.append(line)
+                else:
+                    final_lines.append(line)
+            return '\n'.join(final_lines)
         return result
 
     if start_analysis:
@@ -776,7 +776,7 @@ else:
         
         # Security: ensure model is still in allowed options
         valid_options = [
-            "자동 최적화 (권장)", 
+            "자동 최적화", 
             "gemini-2.0-flash-lite-001",
             "gemini-2.5-flash-lite",
             "gemini-2.0-flash",
@@ -786,9 +786,9 @@ else:
             "gemini-3-pro-preview"
         ]
         if admin_model and admin_model not in valid_options:
-            admin_model = "자동 최적화 (권장)"
+            admin_model = "자동 최적화"
             
-        is_manual = admin_model and admin_model != "자동 최적화 (권장)"
+        is_manual = admin_model and admin_model != "자동 최적화"
         
         if is_manual:
             MODEL_NAME = admin_model

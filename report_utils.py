@@ -246,9 +246,11 @@ def _process_markdown_table(doc, lines):
                 # 2. Clear existing paragraphs
                 cell._element.clear_content()
                 
-                # 3. Split lines (newline or special marker <<BR>>)
+                # 3. Split lines (newline, special marker <<BR>>, semicolon, or HTML <br> tag)
                 # Use <<BR>> as safe placeholder for newlines in tables
-                lines_in_cell = re.split(r'\n|<<BR>>', cleaned_text)
+                # Also split on semicolon followed by optional space to support list items
+                # AND handle <br> tags which might be present for web display
+                lines_in_cell = re.split(r'\n|<<BR>>|;\s?|<br\s*/?>', cleaned_text, flags=re.IGNORECASE)
                 
                 for line_content in lines_in_cell:
                     p = cell.add_paragraph()
