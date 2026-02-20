@@ -2,7 +2,7 @@ import io
 import re
 import docx
 from docx import Document
-from docx.shared import Pt, Cm
+from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -42,19 +42,33 @@ def clean_markdown(text):
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     
     # Finally sanitize for XML
-    return sanitize_xml(text)
+    text = sanitize_xml(text)
+    return text.replace('&nbsp;', ' ')
 
 def add_page_number(run):
     """Inserts an automatic page number field into a run."""
     # Beginning of field
     fld_start = OxmlElement('w:fldChar')
     fld_start.set(qn('w:fldChar'), 'begin')
+    # Force update on open
+    fld_start.set(qn('w:dirty'), 'true') 
     run._element.append(fld_start)
     
     # Field instruction (PAGE)
     instr_text = OxmlElement('w:instrText')
-    instr_text.text = "PAGE"
+    instr_text.set(qn('xml:space'), 'preserve')
+    instr_text.text = " PAGE "
     run._element.append(instr_text)
+    
+    # Separate (optional but good practice)
+    fld_sep = OxmlElement('w:fldChar')
+    fld_sep.set(qn('w:fldChar'), 'separate')
+    run._element.append(fld_sep)
+
+    # Display text (placeholder)
+    t = OxmlElement('w:t')
+    t.text = "1"
+    run._element.append(t)
     
     # End of field
     fld_end = OxmlElement('w:fldChar')
@@ -72,7 +86,7 @@ def generate_word_report(results, project_name="미지정 사업"):
     
     # Set Narrow Margins and Add Page Numbers to Footer (Bottom Center)
     for section in doc.sections:
-        # Margins
+        # Margins (Narrow: 1.27cm)
         section.top_margin = Cm(1.27)
         section.bottom_margin = Cm(1.27)
         section.left_margin = Cm(1.27)
@@ -162,6 +176,37 @@ def generate_word_report(results, project_name="미지정 사업"):
     buffer.seek(0)
     return buffer
 
+def _parse_html_style(text):
+    """
+    Parses text with specific HTML spans and returns a list of (text, style_dict).
+    Supported style: <span style='color:blue; font-weight:bold;'>TEXT</span>
+    """
+    segments = []
+    # Regex to find the specific span pattern used in app.py
+    # Matches: <span style='...'>CONTENT</span>
+    # Note: Regex is simple and specific to the prompt instruction
+    pattern = r"(<span style='[^']*color:blue;[^']*font-weight:bold;[^']*'>(.*?)</span>)"
+    
+    last_idx = 0
+    for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+        # 1. Text before valid match
+        pre_text = text[last_idx:match.start()]
+        if pre_text:
+            segments.append((pre_text, None))
+            
+        # 2. MATCHED Text (Blue Bold)
+        content = match.group(2) # The content inside span
+        segments.append((content, {"color": RGBColor(0, 0, 255), "bold": True}))
+        
+        # Update index
+        last_idx = match.end()
+        
+    # 3. Remaining text
+    if last_idx < len(text):
+        segments.append((text[last_idx:], None))
+        
+    return segments
+
 def _process_markdown_table(doc, lines):
     """
     Parses a markdown table buffer and adds a Word table.
@@ -195,20 +240,39 @@ def _process_markdown_table(doc, lines):
         for c, text in enumerate(cells):
             if c < cols:
                 cell = table.cell(r, c)
+                
+                # 1. Clean Markdown (basic)
                 cleaned_text = clean_markdown(text)
-                cell.text = cleaned_text
                 
-                # Clear existing paragraphs in cell and add new ones based on \n
-                cell._element.clear_content() # Quick way to clear
+                # 2. Clear existing paragraphs
+                cell._element.clear_content()
                 
-                # Split by newline or semicolon and add as paragraphs
+                # 3. Split lines (newline or semicolon)
                 lines_in_cell = re.split(r'\n|; ', cleaned_text)
-                for i, line_content in enumerate(lines_in_cell):
-                    p = cell.add_paragraph(line_content)
+                
+                for line_content in lines_in_cell:
+                    p = cell.add_paragraph()
                     p.style = doc.styles['Normal']
-                    for run in p.runs:
+                    
+                    # 4. Parse styling (Blue Bold spans)
+                    styled_segments = _parse_html_style(line_content)
+                    
+                    for segment_text, style in styled_segments:
+                        if not segment_text: continue
+                        
+                        run = p.add_run(segment_text)
                         run.font.name = 'Malgun Gothic'
-                        run.font.size = Pt(9) # Slightly smaller for tables
+                        run.font.size = Pt(9)
                         run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
-                        if r == 0: # Header Bold
+                        
+                        # Apply Header Bold
+                        if r == 0:
                             run.font.bold = True
+                        
+                        # Apply Custom Style (Blue/Bold from Span)
+                        if style:
+                            if style.get("color"):
+                                run.font.color.rgb = style["color"]
+                            if style.get("bold"):
+                                run.font.bold = True
+
