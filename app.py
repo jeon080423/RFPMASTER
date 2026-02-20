@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pdfplumber
 import pandas as pd
@@ -13,6 +14,7 @@ import traceback
 import auth
 import email_utils
 import random
+import report_utils
 
 # -----------------------------------------------------------------------------
 # 1. Config & Branding
@@ -565,7 +567,7 @@ def invoke_with_retry(prompt_template, params, api_keys, use_flash=False, model_
                 # Auth errors: Skip to NEXT KEY immediately
                 auth_errors = ['401', 'unauthorized', '403', 'forbidden', 'permission']
                 if any(err in error_str for err in auth_errors):
-                    st.warning(f"� {i + 1}번 키 인증 오류. 다음 키로 전환합니다.")
+                    st.warning(f" {i + 1}번 키 인증 오류. 다음 키로 전환합니다.")
                     break # Break inner loop to try next key
                 
                 # Unexpected error: Raise it
@@ -1009,12 +1011,21 @@ else:
                 st.session_state.analysis_results["similar_research"] = "사용자가 유사 연구 검색을 비활성화했습니다."
 
             # 3. Pre-generate Docx report
-            import report_utils
-            report_data = {
-                "제안요청서 분석 결과": st.session_state.analysis_results["main_analysis"],
-                "유사연구 분석 리스트": st.session_state.analysis_results.get("similar_research", "")
-            }
-            st.session_state.analysis_results["docx_file"] = report_utils.generate_word_report(report_data, project_name=project_name)
+            try:
+                report_data = {
+                    "제안요청서 분석 결과": st.session_state.analysis_results["main_analysis"],
+                    "유사연구 분석 리스트": st.session_state.analysis_results.get("similar_research", "")
+                }
+                
+                docx_buffer = report_utils.generate_word_report(report_data, project_name=project_name)
+                
+                if docx_buffer:
+                    st.session_state.analysis_results["docx_file"] = docx_buffer
+                else:
+                    st.error("보고서 생성 실패: 결과 파일이 비어있습니다.")
+            except Exception as e:
+                st.error(f"보고서 생성 중 오류 발생: {e}")
+                st.code(traceback.format_exc())
 
         except Exception as e:
             st.error(f"AI 분석 중 오류가 발생했습니다: {type(e).__name__}: {e}")
