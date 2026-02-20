@@ -24,6 +24,31 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+def setup_seo():
+    """
+    Injects SEO meta tags into the Streamlit app.
+    Streamlit is an SPA, so these tags are injected into the body, but modern crawlers (Google/Naver) can parse them.
+    Ideally, for perfect SEO, these should be in <head> served by the backend (Nginx/Streamlit Cloud settings).
+    """
+    meta_tags = """
+    <meta name="description" content="수주비책 - 공공기관 입찰 성공을 위한 제안요청서(RFP) 심층 분석 솔루션. AI 기반 RFP 분석으로 수주 확률을 높이세요.">
+    <meta name="keywords" content="수주비책, RFP 분석, 제안요청서, 공공기관 입찰, 나라장터, AI 제안서, 입찰 전략, 제안서 작성, 조달청">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="수주비책 - AI 기반 RFP 분석 솔루션">
+    <meta property="og:description" content="공공기관 입찰 RFP를 AI로 완벽 분석. 숨겨진 요구사항 발굴부터 전략 수립까지.">
+    <meta property="og:url" content="https://rfp-analyzer.streamlit.app/">
+    <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/2921/2921222.png">
+    
+    <!-- Naver Search Advisor Verification (Placeholder) -->
+    <meta name="naver-site-verification" content="" />
+    
+    <!-- Google Search Console Verification -->
+    <meta name="google-site-verification" content="tG69ECmiNbvsLLkXaGTZtaqSwrjmaizodPguQPuTF48" />
+    """
+    st.markdown(meta_tags, unsafe_allow_html=True)
+
+setup_seo()
+
 # Custom CSS
 st.markdown("""
 <style>
