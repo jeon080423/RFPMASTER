@@ -226,9 +226,10 @@ def login_user(email, password):
                 sheet = client.open(SHEET_NAME).sheet1
                 cell = sheet.find(email)
                 if cell:
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # Use KST (UTC+9)
+                    now_kst = (datetime.utcnow() + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S")
                     # Column 6 is last_login
-                    sheet.update_cell(cell.row, 6, now)
+                    sheet.update_cell(cell.row, 6, now_kst)
             except:
                 pass
                 
