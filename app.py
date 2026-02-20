@@ -162,7 +162,7 @@ with st.sidebar:
                 )
 
                 # Global model setting for regular users
-                current_global_default = auth.get_global_setting("user_default_model", "gemini-2.5-flash")
+                current_global_default = auth.get_global_setting("user_default_model", "gemini-2.0-flash")
                 # Find index of current setting in options
                 try: 
                     default_idx = model_options.index(current_global_default)
@@ -797,7 +797,7 @@ else:
             # Load global default set by admin (cached for 10 mins)
             @st.cache_data(ttl=600)
             def fetch_default_model():
-                return auth.get_global_setting("user_default_model", "gemini-2.5-flash")
+                return auth.get_global_setting("user_default_model", "gemini-2.0-flash")
             
             global_model = fetch_default_model()
             MODEL_NAME = global_model
@@ -1081,7 +1081,7 @@ else:
             st.download_button(
                 label="📥 분석 결과 워드 파일 다운로드",
                 data=st.session_state.analysis_results["docx_file"],
-                file_name="win_strategy_report.docx",
+                file_name=f"{re.sub(r'[\\\\/:*?\"<>|]', '', project_name)}_analysis_report.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 type="primary",
                 use_container_width=True,
