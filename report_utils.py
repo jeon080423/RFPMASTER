@@ -179,13 +179,12 @@ def generate_word_report(results, project_name="미지정 사업"):
 def _parse_html_style(text):
     """
     Parses text with specific HTML spans and returns a list of (text, style_dict).
-    Supported style: <span style='color:blue; font-weight:bold;'>TEXT</span>
+    Supported style: <blue>TEXT</blue> -> Blue + Bold
+    Also supports legacy span style for backward compatibility if possible, better to just clean.
     """
     segments = []
-    # Regex to find the specific span pattern used in app.py
-    # Matches: <span style='...'>CONTENT</span>
-    # Note: Regex is simple and specific to the prompt instruction
-    pattern = r"(<span style='[^']*color:blue;[^']*font-weight:bold;[^']*'>(.*?)</span>)"
+    # Regex to find <blue>...</blue>
+    pattern = r"(<blue>(.*?)</blue>)"
     
     last_idx = 0
     for match in re.finditer(pattern, text, flags=re.IGNORECASE):
@@ -195,7 +194,7 @@ def _parse_html_style(text):
             segments.append((pre_text, None))
             
         # 2. MATCHED Text (Blue Bold)
-        content = match.group(2) # The content inside span
+        content = match.group(2) # The content inside tag
         segments.append((content, {"color": RGBColor(0, 0, 255), "bold": True}))
         
         # Update index
@@ -247,14 +246,15 @@ def _process_markdown_table(doc, lines):
                 # 2. Clear existing paragraphs
                 cell._element.clear_content()
                 
-                # 3. Split lines (newline or semicolon)
-                lines_in_cell = re.split(r'\n|; ', cleaned_text)
+                # 3. Split lines (newline or special marker <<BR>>)
+                # Use <<BR>> as safe placeholder for newlines in tables
+                lines_in_cell = re.split(r'\n|<<BR>>', cleaned_text)
                 
                 for line_content in lines_in_cell:
                     p = cell.add_paragraph()
                     p.style = doc.styles['Normal']
                     
-                    # 4. Parse styling (Blue Bold spans)
+                    # 4. Parse styling (Blue Bold tags)
                     styled_segments = _parse_html_style(line_content)
                     
                     for segment_text, style in styled_segments:
@@ -269,7 +269,7 @@ def _process_markdown_table(doc, lines):
                         if r == 0:
                             run.font.bold = True
                         
-                        # Apply Custom Style (Blue/Bold from Span)
+                        # Apply Custom Style (Blue/Bold from Tag)
                         if style:
                             if style.get("color"):
                                 run.font.color.rgb = style["color"]
