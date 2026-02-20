@@ -43,7 +43,14 @@ def clean_markdown(text):
     
     # Finally sanitize for XML
     text = sanitize_xml(text)
-    return text.replace('&nbsp;', ' ')
+    
+    # Handle HTML entities
+    # 1. &nbsp; (with or without semicolon)
+    text = re.sub(r'&nbsp;?', ' ', text, flags=re.IGNORECASE)
+    # 2. Other common entities (if raw text contains them)
+    text = text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+    
+    return text
 
 def add_page_number(run):
     """Inserts an automatic page number field into a run."""
